@@ -1,0 +1,6 @@
+venv
+CLAUDE.md
+.claude
+.pytest_cache
+.env
+instance/nutgraf.db

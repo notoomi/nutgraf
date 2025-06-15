@@ -1,0 +1,350 @@
+{% extends "base.html" %}
+
+{% block title %}API Documentation - Nutgraf{% endblock %}
+
+{% block content %}
+<div class="api-docs">
+    <div class="docs-header">
+        <h1>Nutgraf API Documentation</h1>
+        <p>Integrate AI-powered article summarization into your applications</p>
+    </div>
+
+    <div class="docs-section">
+        <h2>Getting Started</h2>
+        <p>The Nutgraf API allows you to programmatically access our article summarization capabilities. To get started:</p>
+        <ol>
+            <li>Generate an API key from your <a href="{{ url_for('main.settings') }}">Settings page</a></li>
+            <li>Include your API key in requests using the Authorization header</li>
+            <li>Make requests to our REST endpoints</li>
+        </ol>
+    </div>
+
+    <div class="docs-section">
+        <h2>Authentication</h2>
+        <p>All API requests must include your Nutgraf API key in one of these ways:</p>
+        
+        <div class="code-block">
+            <h4>Authorization Header (Recommended)</h4>
+            <pre><code>Authorization: Bearer YOUR_NUTGRAF_API_KEY</code></pre>
+        </div>
+
+        <div class="code-block">
+            <h4>X-API-Key Header (Alternative)</h4>
+            <pre><code>X-API-Key: YOUR_NUTGRAF_API_KEY</code></pre>
+        </div>
+    </div>
+
+    <div class="docs-section">
+        <h2>AI Provider API Keys</h2>
+        <p>To use AI models, you need OpenAI or Anthropic API keys. You can provide them in two ways:</p>
+        
+        <h4>Option 1: Account Settings (Recommended)</h4>
+        <p>Store your AI API keys in your <a href="{{ url_for('main.settings') }}">account settings</a>. They will be encrypted and used automatically.</p>
+        
+        <h4>Option 2: Per-Request Keys</h4>
+        <p>Include AI API keys directly in your API requests using <code>openai_api_key</code> or <code>anthropic_api_key</code> fields.</p>
+        
+        <div class="code-block">
+            <h4>Key Priority</h4>
+            <pre><code>1. Keys provided in the request (highest priority)
+2. Keys stored in your account settings
+3. Error if no valid key found for the requested model</code></pre>
+        </div>
+    </div>
+
+    <div class="docs-section">
+        <h2>Base URL</h2>
+        <div class="code-block">
+            <pre><code>{{ request.host_url }}api/v1</code></pre>
+        </div>
+    </div>
+
+    <div class="docs-section">
+        <h2>Rate Limits</h2>
+        <p>API usage is limited to <strong>1,000 requests per month</strong> per account. Current usage can be checked via the <code>/usage</code> endpoint or your settings page.</p>
+    </div>
+
+    <div class="docs-section">
+        <h2>Endpoints</h2>
+
+        <div class="endpoint">
+            <h3>Health Check</h3>
+            <div class="endpoint-method">GET /v1/health</div>
+            <p>Check if the API is operational. No authentication required.</p>
+            
+            <h4>Response</h4>
+            <div class="code-block">
+                <pre><code>{
+  "status": "healthy",
+  "service": "Nutgraf API",
+  "version": "1.0.0",
+  "timestamp": "2024-01-01T12:00:00"
+}</code></pre>
+            </div>
+        </div>
+
+        <div class="endpoint">
+            <h3>Summarize Content</h3>
+            <div class="endpoint-method">POST /v1/summarize</div>
+            <p>Generate a summary from a URL or provided text content.</p>
+            
+            <h4>Request Body</h4>
+            <div class="code-block">
+                <pre><code>{
+  "url": "https://example.com/article",  // Optional if text provided
+  "text": "Article content...",          // Optional if url provided
+  "title": "Article Title",             // Optional
+  "length": "standard",                 // Optional: brief, standard, in_depth, custom
+  "tone": "neutral",                    // Optional: neutral, conversational, professional
+  "format": "prose",                    // Optional: prose, bullets
+  "model": "gpt-3.5-turbo",            // Optional: AI model to use
+  "custom_word_count": 300,            // Optional: if length is "custom"
+  "save_summary": true,                 // Optional: save to your history
+  "openai_api_key": "sk-...",          // Optional: OpenAI key for this request
+  "anthropic_api_key": "sk-ant-..."    // Optional: Anthropic key for this request
+}</code></pre>
+            </div>
+
+            <h4>Response</h4>
+            <div class="code-block">
+                <pre><code>{
+  "summary": {
+    "text": "Generated summary text...",
+    "word_count": 150,
+    "id": 123  // Only if save_summary=true
+  },
+  "metadata": {
+    "title": "Article Title",
+    "author": "Author Name",
+    "url": "https://example.com/article",
+    "length": "standard",
+    "tone": "neutral",
+    "format": "prose",
+    "model": "gpt-3.5-turbo",
+    "timestamp": "2024-01-01T12:00:00"
+  },
+  "usage": {
+    "calls_made": 15,
+    "calls_remaining": 985
+  }
+}</code></pre>
+            </div>
+        </div>
+
+        <div class="endpoint">
+            <h3>Get Usage Statistics</h3>
+            <div class="endpoint-method">GET /v1/usage</div>
+            <p>Check your current API usage and account information.</p>
+            
+            <h4>Response</h4>
+            <div class="code-block">
+                <pre><code>{
+  "usage": {
+    "calls_made": 15,
+    "calls_limit": 1000,
+    "calls_remaining": 985,
+    "percentage_used": 1.5
+  },
+  "account": {
+    "email": "user@example.com",
+    "member_since": "2024-01-01T00:00:00"
+  }
+}</code></pre>
+            </div>
+        </div>
+
+        <div class="endpoint">
+            <h3>Get Available Models</h3>
+            <div class="endpoint-method">GET /v1/models</div>
+            <p>Get a list of available AI models you can use for summarization.</p>
+            
+            <h4>Response</h4>
+            <div class="code-block">
+                <pre><code>{
+  "models": [
+    {
+      "id": "gpt-3.5-turbo",
+      "name": "GPT-3.5 Turbo",
+      "provider": "OpenAI"
+    },
+    {
+      "id": "claude-3-sonnet",
+      "name": "Claude 3.5 Sonnet",
+      "provider": "Anthropic"
+    }
+  ],
+  "default_model": "gpt-3.5-turbo"
+}</code></pre>
+            </div>
+        </div>
+    </div>
+
+    <div class="docs-section">
+        <h2>Error Responses</h2>
+        <p>The API uses standard HTTP status codes and returns error details in JSON format:</p>
+        
+        <div class="code-block">
+            <pre><code>{
+  "error": "Rate limit exceeded",
+  "message": "You have exceeded your monthly limit of 1000 API calls",
+  "usage": {
+    "calls_made": 1000,
+    "calls_limit": 1000
+  }
+}</code></pre>
+        </div>
+
+        <h4>Common Error Codes</h4>
+        <ul>
+            <li><strong>400</strong> - Bad Request (missing required fields, invalid JSON)</li>
+            <li><strong>401</strong> - Unauthorized (missing or invalid API key)</li>
+            <li><strong>403</strong> - Forbidden (account disabled)</li>
+            <li><strong>429</strong> - Too Many Requests (rate limit exceeded)</li>
+            <li><strong>500</strong> - Internal Server Error</li>
+        </ul>
+    </div>
+
+    <div class="docs-section">
+        <h2>Code Examples</h2>
+
+        <h3>Python</h3>
+        <div class="code-block">
+            <h4>Using stored API keys</h4>
+            <pre><code>import requests
+
+nutgraf_api_key = "YOUR_NUTGRAF_API_KEY"
+url = "{{ request.host_url }}api/v1/summarize"
+
+headers = {
+    "Authorization": f"Bearer {nutgraf_api_key}",
+    "Content-Type": "application/json"
+}
+
+data = {
+    "url": "https://example.com/article",
+    "length": "standard",
+    "tone": "neutral",
+    "save_summary": True
+}
+
+response = requests.post(url, json=data, headers=headers)
+result = response.json()
+
+if response.status_code == 200:
+    print("Summary:", result["summary"]["text"])
+    print("Word count:", result["summary"]["word_count"])
+else:
+    print("Error:", result["error"])</code></pre>
+        </div>
+
+        <div class="code-block">
+            <h4>Providing AI API key in request</h4>
+            <pre><code>import requests
+
+nutgraf_api_key = "YOUR_NUTGRAF_API_KEY"
+openai_api_key = "sk-your-openai-key..."
+
+url = "{{ request.host_url }}api/v1/summarize"
+
+headers = {
+    "Authorization": f"Bearer {nutgraf_api_key}",
+    "Content-Type": "application/json"
+}
+
+data = {
+    "url": "https://example.com/article",
+    "length": "standard",
+    "tone": "neutral", 
+    "model": "gpt-4",
+    "openai_api_key": openai_api_key,  # Provide OpenAI key for this request
+    "save_summary": True
+}
+
+response = requests.post(url, json=data, headers=headers)
+result = response.json()
+
+if response.status_code == 200:
+    print("Summary:", result["summary"]["text"])
+else:
+    print("Error:", result["error"])</code></pre>
+        </div>
+
+        <h3>JavaScript (Node.js)</h3>
+        <div class="code-block">
+            <pre><code>const axios = require('axios');
+
+const apiKey = 'YOUR_API_KEY';
+const url = '{{ request.host_url }}api/v1/summarize';
+
+const data = {
+  url: 'https://example.com/article',
+  length: 'standard',
+  tone: 'neutral',
+  save_summary: true
+};
+
+const headers = {
+  'Authorization': `Bearer ${apiKey}`,
+  'Content-Type': 'application/json'
+};
+
+axios.post(url, data, { headers })
+  .then(response => {
+    console.log('Summary:', response.data.summary.text);
+    console.log('Word count:', response.data.summary.word_count);
+  })
+  .catch(error => {
+    console.error('Error:', error.response.data.error);
+  });</code></pre>
+        </div>
+
+        <h3>cURL</h3>
+        <div class="code-block">
+            <h4>Using stored API keys</h4>
+            <pre><code>curl -X POST "{{ request.host_url }}api/v1/summarize" \
+  -H "Authorization: Bearer YOUR_NUTGRAF_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://example.com/article",
+    "length": "standard",
+    "tone": "neutral",
+    "save_summary": true
+  }'</code></pre>
+        </div>
+
+        <div class="code-block">
+            <h4>Providing AI API key in request</h4>
+            <pre><code>curl -X POST "{{ request.host_url }}api/v1/summarize" \
+  -H "Authorization: Bearer YOUR_NUTGRAF_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://example.com/article",
+    "length": "standard",
+    "tone": "neutral",
+    "model": "gpt-4",
+    "openai_api_key": "sk-your-openai-key...",
+    "save_summary": true
+  }'</code></pre>
+        </div>
+    </div>
+
+    <div class="docs-section">
+        <h2>Best Practices</h2>
+        <ul>
+            <li><strong>Rate limiting:</strong> Monitor your usage and implement client-side rate limiting</li>
+            <li><strong>Error handling:</strong> Always check status codes and handle errors gracefully</li>
+            <li><strong>Caching:</strong> Cache results when appropriate to reduce API calls</li>
+            <li><strong>Security:</strong> Never expose API keys in client-side code or public repositories</li>
+            <li><strong>API Key Storage:</strong> Store AI provider keys in your account settings when possible rather than sending them with each request</li>
+            <li><strong>Per-Request Keys:</strong> Use per-request API keys only when necessary (e.g., multi-tenant applications where users provide their own keys)</li>
+            <li><strong>Content size:</strong> Very long articles may be truncated; consider preprocessing</li>
+            <li><strong>Logging:</strong> Provided API keys are never logged or stored by Nutgraf</li>
+        </ul>
+    </div>
+
+    <div class="docs-section">
+        <h2>Support</h2>
+        <p>Need help with the API? Contact us or check your <a href="{{ url_for('main.settings') }}">account settings</a> for usage information.</p>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,268 @@
+{% extends "base.html" %}
+
+{% block title %}{{ summary.title or 'Summary' }} - Nutgraf{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/summary.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="summary-container">
+    <div class="summary-header">
+        <div class="summary-meta">
+            <h1>{{ summary.title or 'Untitled' }}</h1>
+            {% if summary.author %}
+                <p class="summary-author">by {{ summary.author }}</p>
+            {% endif %}
+            {% if summary.publication_date %}
+                <p class="summary-pub-date">Published: {{ summary.publication_date.strftime('%B %d, %Y') }}</p>
+            {% endif %}
+            <p class="summary-analysis-date">Analyzed: {{ summary.created_at.strftime('%B %d, %Y at %I:%M %p') }}</p>
+            <p class="summary-url"><a href="{{ summary.url }}" target="_blank">{{ summary.url }}</a></p>
+        </div>
+
+        <div class="summary-settings">
+            <div class="setting-tag">{{ summary.length_setting }}</div>
+            <div class="setting-tag">{{ summary.tone_setting }}</div>
+            <div class="setting-tag">{{ summary.format_setting }}</div>
+            <div class="setting-tag">{{ summary.model_used }}</div>
+            <div class="setting-tag">{{ summary.word_count }} words</div>
+        </div>
+    </div>
+
+    <div class="summary-content">
+        <div class="summary-text">
+            {% if summary.format_setting == 'bullets' %}
+                <div class="bullets-content">
+                    {{ summary.summary_text | replace('\n', '<br>') | safe }}
+                </div>
+            {% else %}
+                <div class="prose-content">
+                    {% for paragraph in summary.summary_text.split('\n\n') %}
+                        <p>{{ paragraph }}</p>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="summary-footer">
+        <div class="tags-section">
+            <h3>Tags</h3>
+            <div class="tags-container">
+                <div class="existing-tags">
+                    {% for tag in summary.get_tag_names() %}
+                        <span class="tag" data-tag="{{ tag }}">
+                            {{ tag }}
+                            <button class="tag-remove" onclick="removeTag('{{ tag }}')">×</button>
+                        </span>
+                    {% endfor %}
+                </div>
+                
+                <div class="add-tag">
+                    <input type="text" id="tag-input" placeholder="Add a tag..." class="tag-input">
+                    <button class="btn btn-secondary" onclick="addTag()">Add</button>
+                </div>
+                
+                <div class="tag-suggestions" id="tag-suggestions" style="display: none;">
+                    <!-- Tag suggestions will appear here -->
+                </div>
+            </div>
+        </div>
+
+        <div class="summary-actions">
+            <button class="btn btn-secondary" onclick="window.print()">Print Summary</button>
+            <button class="btn btn-secondary" onclick="copySummary()">Copy to Clipboard</button>
+            <button class="btn btn-danger delete-summary" data-summary-id="{{ summary.id }}" data-summary-title="{{ summary.title or 'Untitled' }}">Delete Summary</button>
+            <a href="{{ url_for('main.history') }}" class="btn btn-primary">Back to History</a>
+        </div>
+    </div>
+</div>
+
+<script>
+const summaryId = {{ summary.id }};
+
+function addTag() {
+    const input = document.getElementById('tag-input');
+    const tagName = input.value.trim();
+    
+    if (!tagName) return;
+    
+    fetch('/api/add-tags', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            summary_id: summaryId,
+            tags: [tagName]
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            alert('Error adding tag: ' + data.error);
+        } else {
+            // Add tag to UI
+            const existingTags = document.querySelector('.existing-tags');
+            const tagElement = document.createElement('span');
+            tagElement.className = 'tag';
+            tagElement.setAttribute('data-tag', tagName);
+            tagElement.innerHTML = `${tagName} <button class="tag-remove" onclick="removeTag('${tagName}')">×</button>`;
+            existingTags.appendChild(tagElement);
+            
+            input.value = '';
+            hideSuggestions();
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Failed to add tag');
+    });
+}
+
+function removeTag(tagName) {
+    fetch('/api/remove-tag', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            summary_id: summaryId,
+            tag_name: tagName
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            alert('Error removing tag: ' + data.error);
+        } else {
+            // Remove tag from UI
+            const tagElement = document.querySelector(`[data-tag="${tagName}"]`);
+            if (tagElement) {
+                tagElement.remove();
+            }
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Failed to remove tag');
+    });
+}
+
+function copySummary() {
+    const summaryText = document.querySelector('.summary-text').innerText;
+    navigator.clipboard.writeText(summaryText).then(() => {
+        alert('Summary copied to clipboard!');
+    }).catch(err => {
+        console.error('Failed to copy: ', err);
+        alert('Failed to copy summary');
+    });
+}
+
+// Tag suggestions
+const tagInput = document.getElementById('tag-input');
+const tagSuggestions = document.getElementById('tag-suggestions');
+
+tagInput.addEventListener('input', function() {
+    const query = this.value.trim();
+    
+    if (query.length < 2) {
+        hideSuggestions();
+        return;
+    }
+    
+    fetch(`/api/get-tag-suggestions?q=${encodeURIComponent(query)}`)
+        .then(response => response.json())
+        .then(data => {
+            showSuggestions(data.suggestions || []);
+        })
+        .catch(error => {
+            console.error('Error fetching suggestions:', error);
+            hideSuggestions();
+        });
+});
+
+tagInput.addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        addTag();
+    }
+});
+
+function showSuggestions(suggestions) {
+    tagSuggestions.innerHTML = '';
+    
+    if (suggestions.length === 0) {
+        hideSuggestions();
+        return;
+    }
+    
+    suggestions.forEach(suggestion => {
+        const suggestionElement = document.createElement('div');
+        suggestionElement.className = 'tag-suggestion';
+        suggestionElement.textContent = suggestion;
+        suggestionElement.onclick = () => {
+            tagInput.value = suggestion;
+            hideSuggestions();
+            addTag();
+        };
+        tagSuggestions.appendChild(suggestionElement);
+    });
+    
+    tagSuggestions.style.display = 'block';
+}
+
+function hideSuggestions() {
+    tagSuggestions.style.display = 'none';
+}
+
+// Hide suggestions when clicking outside
+document.addEventListener('click', function(e) {
+    if (!tagInput.contains(e.target) && !tagSuggestions.contains(e.target)) {
+        hideSuggestions();
+    }
+});
+
+// Delete summary functionality
+document.addEventListener('DOMContentLoaded', function() {
+    const deleteButton = document.querySelector('.delete-summary');
+    
+    if (deleteButton) {
+        deleteButton.addEventListener('click', function() {
+            const summaryId = this.dataset.summaryId;
+            const summaryTitle = this.dataset.summaryTitle;
+            
+            if (confirm(`Are you sure you want to delete "${summaryTitle}"? This action cannot be undone.`)) {
+                deleteSummary(summaryId);
+            }
+        });
+    }
+});
+
+function deleteSummary(summaryId) {
+    fetch('/api/delete-summary', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            summary_id: summaryId
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            alert('Error deleting summary: ' + data.error);
+        } else {
+            alert('Summary deleted successfully');
+            window.location.href = '/history';
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Failed to delete summary');
+    });
+}
+</script>
+{% endblock %}

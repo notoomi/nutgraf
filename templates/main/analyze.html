@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+
+{% block title %}Analyze Articles - Nutgraf{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/analyze.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="analyze-container">
+    <div class="analyze-header">
+        <h1>Analyze Articles</h1>
+        <p>Input URLs and customize your summary preferences</p>
+    </div>
+
+    <!-- Step 1: URL Input -->
+    <div class="analyze-step" id="step-1">
+        <h2>1. Input URLs</h2>
+        
+        <div class="input-methods">
+            <div class="input-method active" data-method="textarea">
+                <h3>Paste URLs</h3>
+                <textarea id="url-textarea" placeholder="Paste URLs here, one per line..." rows="6"></textarea>
+            </div>
+            
+            <div class="input-method" data-method="file">
+                <h3>Upload File</h3>
+                <div class="file-upload">
+                    <input type="file" id="file-input" accept=".txt,.csv" style="display: none;">
+                    <button class="btn btn-secondary" onclick="document.getElementById('file-input').click()">
+                        Choose File
+                    </button>
+                    <span id="file-name">No file selected</span>
+                </div>
+            </div>
+            
+            <div class="input-method" data-method="rss">
+                <h3>RSS Feed</h3>
+                <input type="url" id="rss-input" placeholder="https://example.com/feed.xml">
+                <button class="btn btn-secondary" id="rss-fetch">Fetch Articles</button>
+            </div>
+        </div>
+
+        <div class="input-actions">
+            <button class="btn btn-primary" id="process-urls">Process URLs</button>
+        </div>
+    </div>
+
+    <!-- Step 2: URL Selection -->
+    <div class="analyze-step" id="step-2" style="display: none;">
+        <h2>2. Select Articles</h2>
+        
+        <div class="url-selection">
+            <div class="selection-header">
+                <label class="checkbox-label">
+                    <input type="checkbox" id="select-all">
+                    <span class="checkbox-text">Select All</span>
+                </label>
+                <span class="selection-count">0 selected</span>
+            </div>
+            
+            <div id="url-list" class="url-list">
+                <!-- URLs will be populated here -->
+            </div>
+        </div>
+
+        <div class="step-actions">
+            <button class="btn btn-secondary" id="back-to-step-1">Back</button>
+            <button class="btn btn-primary" id="proceed-to-settings">Continue</button>
+        </div>
+    </div>
+
+    <!-- Step 3: Summary Settings -->
+    <div class="analyze-step" id="step-3" style="display: none;">
+        <h2>3. Summary Settings</h2>
+        
+        <div class="settings-grid">
+            <div class="setting-group">
+                <label class="setting-label">Length</label>
+                <div class="length-options">
+                    <label class="radio-label">
+                        <input type="radio" name="length" value="brief" checked>
+                        <span>Brief (100 words)</span>
+                    </label>
+                    <label class="radio-label">
+                        <input type="radio" name="length" value="standard">
+                        <span>Standard (250 words)</span>
+                    </label>
+                    <label class="radio-label">
+                        <input type="radio" name="length" value="in_depth">
+                        <span>In-Depth (500 words)</span>
+                    </label>
+                    <label class="radio-label">
+                        <input type="radio" name="length" value="custom">
+                        <span>Custom</span>
+                    </label>
+                </div>
+                <div class="custom-length" id="custom-length" style="display: none;">
+                    <label>Word Count: <span id="word-count-display">250</span></label>
+                    <input type="range" id="word-count-slider" min="50" max="1000" value="250">
+                </div>
+            </div>
+
+            <div class="setting-group">
+                <label class="setting-label">Tone</label>
+                <select id="tone-select" class="form-select">
+                    <option value="neutral">Neutral</option>
+                    <option value="conversational">Conversational</option>
+                    <option value="professional">Professional</option>
+                </select>
+            </div>
+
+            <div class="setting-group">
+                <label class="setting-label">Format</label>
+                <select id="format-select" class="form-select">
+                    <option value="prose">Prose</option>
+                    <option value="bullets">Bullet Points</option>
+                </select>
+            </div>
+
+            <div class="setting-group">
+                <label class="setting-label">AI Model</label>
+                <select id="model-select" class="form-select">
+                    <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+                    <option value="gpt-4">GPT-4</option>
+                    <option value="gpt-4o">GPT-4o</option>
+                    <option value="claude-3-sonnet">Claude 3.5 Sonnet</option>
+                    <option value="claude-3-haiku">Claude 3 Haiku</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="step-actions">
+            <button class="btn btn-secondary" id="back-to-step-2">Back</button>
+            <button class="btn btn-primary" id="generate-summaries">Generate Summaries</button>
+        </div>
+    </div>
+
+    <!-- Step 4: Results -->
+    <div class="analyze-step" id="step-4" style="display: none;">
+        <h2>4. Results</h2>
+        
+        <div class="results-container">
+            <div class="results-header">
+                <h3>Generated Summaries</h3>
+                <div class="results-actions">
+                    <button class="btn btn-secondary" id="analyze-more">Analyze More</button>
+                    <button class="btn btn-primary" id="save-all">Save All</button>
+                </div>
+            </div>
+            
+            <div id="summaries-container" class="summaries-container">
+                <!-- Generated summaries will appear here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading overlay -->
+    <div class="loading-overlay" id="loading-overlay" style="display: none;">
+        <div class="loading-content">
+            <div class="spinner"></div>
+            <p id="loading-text">Processing...</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/analyze.js') }}"></script>
+{% endblock %}

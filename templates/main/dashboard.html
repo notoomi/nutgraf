@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Nutgraf{% endblock %}
+
+{% block content %}
+<div class="dashboard">
+    <div class="dashboard-header">
+        <h1>Welcome back!</h1>
+        <p>Ready to analyze some articles?</p>
+    </div>
+
+    <div class="dashboard-stats">
+        <div class="stat-card">
+            <div class="stat-number">{{ total_summaries }}</div>
+            <div class="stat-label">Total Summaries</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number">{{ week_summaries }}</div>
+            <div class="stat-label">This Week</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number">{{ recent_summaries|length }}</div>
+            <div class="stat-label">Recent</div>
+        </div>
+    </div>
+
+    <div class="dashboard-actions">
+        <a href="{{ url_for('main.analyze') }}" class="btn btn-primary btn-large">
+            Analyze New Articles
+        </a>
+        <a href="{{ url_for('main.history') }}" class="btn btn-secondary btn-large">
+            View History
+        </a>
+    </div>
+
+    {% if recent_summaries %}
+    <div class="recent-summaries">
+        <h2>Recent Summaries</h2>
+        <div class="summary-grid">
+            {% for summary in recent_summaries %}
+            <div class="summary-card">
+                <div class="summary-header">
+                    <h3><a href="{{ url_for('main.view_summary', summary_id=summary.id) }}">{{ summary.title or 'Untitled' }}</a></h3>
+                    <span class="summary-date">{{ summary.created_at.strftime('%b %d, %Y') }}</span>
+                </div>
+                <div class="summary-meta">
+                    {% if summary.author %}
+                        <span class="summary-author">by {{ summary.author }}</span>
+                    {% endif %}
+                    <span class="summary-words">{{ summary.word_count }} words</span>
+                </div>
+                <div class="summary-preview">
+                    {{ summary.summary_text[:150] }}{% if summary.summary_text|length > 150 %}...{% endif %}
+                </div>
+                <div class="summary-tags">
+                    {% for tag in summary.get_tag_names() %}
+                        <span class="tag">{{ tag }}</span>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <h2>No summaries yet</h2>
+        <p>Start by analyzing your first article!</p>
+        <a href="{{ url_for('main.analyze') }}" class="btn btn-primary">Get Started</a>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

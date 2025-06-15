@@ -1,0 +1,141 @@
+{% extends "base.html" %}
+
+{% block title %}Settings - Nutgraf{% endblock %}
+
+{% block content %}
+<div class="settings-container">
+    <div class="settings-header">
+        <h1>Settings</h1>
+        <p>Configure your API keys and default preferences</p>
+    </div>
+
+    <form method="POST" class="settings-form">
+        {{ form.hidden_tag() }}
+        
+        <div class="settings-section">
+            <h2>AI Provider API Keys</h2>
+            <p class="section-description">Enter your API keys to enable AI-powered summarization. Keys are encrypted and stored securely.</p>
+            
+            <div class="form-group">
+                {{ form.openai_api_key.label(class="form-label") }}
+                {{ form.openai_api_key(class="form-input", placeholder="sk-...") }}
+                <small class="form-help">Get your API key from <a href="https://platform.openai.com/api-keys" target="_blank">OpenAI Platform</a></small>
+            </div>
+
+            <div class="form-group">
+                {{ form.anthropic_api_key.label(class="form-label") }}
+                {{ form.anthropic_api_key(class="form-input", placeholder="sk-ant-...") }}
+                <small class="form-help">Get your API key from <a href="https://console.anthropic.com/" target="_blank">Anthropic Console</a></small>
+            </div>
+        </div>
+
+        <div class="settings-section">
+            <h2>Default Preferences</h2>
+            <p class="section-description">Set your preferred defaults for new summaries</p>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    {{ form.default_length.label(class="form-label") }}
+                    {{ form.default_length(class="form-select") }}
+                </div>
+
+                <div class="form-group">
+                    {{ form.default_tone.label(class="form-label") }}
+                    {{ form.default_tone(class="form-select") }}
+                </div>
+            </div>
+
+            <div class="form-row">
+                <div class="form-group">
+                    {{ form.default_format.label(class="form-label") }}
+                    {{ form.default_format(class="form-select") }}
+                </div>
+
+                <div class="form-group">
+                    {{ form.default_model.label(class="form-label") }}
+                    {{ form.default_model(class="form-select") }}
+                </div>
+            </div>
+        </div>
+
+        <div class="settings-actions">
+            <button type="submit" class="btn btn-primary">Save Settings</button>
+            <a href="{{ url_for('main.dashboard') }}" class="btn btn-secondary">Cancel</a>
+        </div>
+    </form>
+
+    <div class="settings-section">
+        <h2>Account</h2>
+        <div class="account-info">
+            <p><strong>Email:</strong> {{ current_user.email }}</p>
+            <p><strong>Member since:</strong> {{ current_user.created_at.strftime('%B %Y') }}</p>
+        </div>
+        
+        <div class="account-actions">
+            <a href="{{ url_for('auth.reset_password') }}" class="btn btn-secondary">Change Password</a>
+        </div>
+    </div>
+
+    <div class="settings-section">
+        <h2>Nutgraf API Access</h2>
+        <p class="section-description">Generate an API key to access Nutgraf's summarization capabilities from external applications.</p>
+        
+        <div class="api-key-section">
+            {% if current_user.nutgraf_api_key %}
+                <div class="api-key-display">
+                    <label class="form-label">Your API Key:</label>
+                    <div class="api-key-value">
+                        <input type="text" value="{{ current_user.nutgraf_api_key }}" readonly class="form-input api-key-input" id="api-key-field">
+                        <button type="button" class="btn btn-secondary" onclick="copyApiKey()">Copy</button>
+                    </div>
+                </div>
+                
+                <div class="api-usage">
+                    <p><strong>Usage:</strong> {{ current_user.api_calls_made }} / {{ current_user.api_calls_limit }} calls this month</p>
+                    <div class="usage-bar">
+                        <div class="usage-progress" style="width: {{ (current_user.api_calls_made / current_user.api_calls_limit * 100) if current_user.api_calls_limit > 0 else 0 }}%"></div>
+                    </div>
+                </div>
+                
+                <div class="api-actions">
+                    <form method="POST" action="{{ url_for('main.generate_api_key') }}" style="display: inline;">
+                        <button type="submit" class="btn btn-secondary" onclick="return confirm('This will invalidate your current API key. Continue?')">Regenerate Key</button>
+                    </form>
+                    <form method="POST" action="{{ url_for('main.revoke_api_key') }}" style="display: inline;">
+                        <button type="submit" class="btn btn-danger" onclick="return confirm('Are you sure you want to revoke your API key?')">Revoke Key</button>
+                    </form>
+                </div>
+            {% else %}
+                <p>You don't have an API key yet. Generate one to start using the Nutgraf API.</p>
+                <form method="POST" action="{{ url_for('main.generate_api_key') }}">
+                    <button type="submit" class="btn btn-primary">Generate API Key</button>
+                </form>
+            {% endif %}
+        </div>
+        
+        <div class="api-docs-link">
+            <p><a href="/api-docs" target="_blank">View API Documentation</a></p>
+        </div>
+    </div>
+</div>
+
+<script>
+function copyApiKey() {
+    const apiKeyField = document.getElementById('api-key-field');
+    apiKeyField.select();
+    apiKeyField.setSelectionRange(0, 99999); // For mobile devices
+    
+    try {
+        document.execCommand('copy');
+        alert('API key copied to clipboard!');
+    } catch (err) {
+        // Fallback for newer browsers
+        navigator.clipboard.writeText(apiKeyField.value).then(() => {
+            alert('API key copied to clipboard!');
+        }).catch(() => {
+            alert('Failed to copy API key. Please copy manually.');
+        });
+    }
+}
+</script>
+{% endblock %}

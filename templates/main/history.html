@@ -1,0 +1,203 @@
+{% extends "base.html" %}
+
+{% block title %}History - Nutgraf{% endblock %}
+
+{% block content %}
+<div class="history-container">
+    <div class="history-header">
+        <h1>Summary History</h1>
+        <p>Browse and search your analyzed articles</p>
+    </div>
+
+    <!-- Filters -->
+    <div class="history-filters">
+        <form method="GET" class="filters-form">
+            <div class="filter-group">
+                <input type="text" name="search" placeholder="Search titles, content, or URLs..." 
+                       value="{{ current_filters.search or '' }}" class="filter-input">
+            </div>
+            
+            <div class="filter-group">
+                <select name="tag" class="filter-select">
+                    <option value="">All Tags</option>
+                    {% for tag in all_tags %}
+                        <option value="{{ tag.name }}" 
+                                {% if current_filters.tag == tag.name %}selected{% endif %}>
+                            {{ tag.name }}
+                        </option>
+                    {% endfor %}
+                </select>
+            </div>
+            
+            <div class="filter-group">
+                <input type="date" name="date_from" placeholder="From Date" 
+                       value="{{ current_filters.date_from or '' }}" class="filter-input">
+            </div>
+            
+            <div class="filter-group">
+                <input type="date" name="date_to" placeholder="To Date" 
+                       value="{{ current_filters.date_to or '' }}" class="filter-input">
+            </div>
+            
+            <div class="filter-actions">
+                <button type="submit" class="btn btn-primary">Filter</button>
+                <a href="{{ url_for('main.history') }}" class="btn btn-secondary">Clear</a>
+            </div>
+        </form>
+    </div>
+
+    <!-- Results -->
+    {% if summaries.items %}
+    <div class="history-results">
+        <div class="results-info">
+            <p>Showing {{ summaries.items|length }} of {{ summaries.total }} summaries</p>
+        </div>
+        
+        <div class="summaries-list">
+            {% for summary in summaries.items %}
+            <div class="summary-item">
+                <div class="summary-main">
+                    <div class="summary-header">
+                        <h3><a href="{{ url_for('main.view_summary', summary_id=summary.id) }}">
+                            {{ summary.title or 'Untitled' }}
+                        </a></h3>
+                        <span class="summary-date">{{ summary.created_at.strftime('%b %d, %Y at %I:%M %p') }}</span>
+                    </div>
+                    
+                    <div class="summary-meta">
+                        {% if summary.author %}
+                            <span class="meta-item">by {{ summary.author }}</span>
+                        {% endif %}
+                        <span class="meta-item">{{ summary.word_count }} words</span>
+                        <span class="meta-item">{{ summary.model_used }}</span>
+                        <span class="meta-item">{{ summary.length_setting }}, {{ summary.tone_setting }}</span>
+                    </div>
+                    
+                    <div class="summary-preview">
+                        {{ summary.summary_text[:200] }}{% if summary.summary_text|length > 200 %}...{% endif %}
+                    </div>
+                    
+                    <div class="summary-footer">
+                        <div class="summary-tags">
+                            {% for tag in summary.get_tag_names() %}
+                                <span class="tag">{{ tag }}</span>
+                            {% endfor %}
+                        </div>
+                        
+                        <div class="summary-actions">
+                            <a href="{{ summary.url }}" target="_blank" class="action-link">View Original</a>
+                            <a href="{{ url_for('main.view_summary', summary_id=summary.id) }}" class="action-link">View Summary</a>
+                            <button class="action-link delete-summary" data-summary-id="{{ summary.id }}" data-summary-title="{{ summary.title or 'Untitled' }}">Delete</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        
+        <!-- Pagination -->
+        {% if summaries.pages > 1 %}
+        <div class="pagination">
+            {% if summaries.has_prev %}
+                <a href="{{ url_for('main.history', page=summaries.prev_num, **current_filters) }}" 
+                   class="pagination-link">Previous</a>
+            {% endif %}
+            
+            {% for page_num in summaries.iter_pages() %}
+                {% if page_num %}
+                    {% if page_num != summaries.page %}
+                        <a href="{{ url_for('main.history', page=page_num, **current_filters) }}" 
+                           class="pagination-link">{{ page_num }}</a>
+                    {% else %}
+                        <span class="pagination-link active">{{ page_num }}</span>
+                    {% endif %}
+                {% else %}
+                    <span class="pagination-ellipsis">...</span>
+                {% endif %}
+            {% endfor %}
+            
+            {% if summaries.has_next %}
+                <a href="{{ url_for('main.history', page=summaries.next_num, **current_filters) }}" 
+                   class="pagination-link">Next</a>
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+    {% else %}
+    <div class="empty-state">
+        <h2>No summaries found</h2>
+        {% if current_filters.search or current_filters.tag or current_filters.date_from or current_filters.date_to %}
+            <p>Try adjusting your filters or <a href="{{ url_for('main.history') }}">clear all filters</a></p>
+        {% else %}
+            <p>You haven't analyzed any articles yet.</p>
+            <a href="{{ url_for('main.analyze') }}" class="btn btn-primary">Analyze Your First Article</a>
+        {% endif %}
+    </div>
+    {% endif %}
+</div>
+
+<script>
+// Delete summary functionality for history page
+document.addEventListener('DOMContentLoaded', function() {
+    const deleteButtons = document.querySelectorAll('.delete-summary');
+    
+    deleteButtons.forEach(button => {
+        button.addEventListener('click', function() {
+            const summaryId = this.dataset.summaryId;
+            const summaryTitle = this.dataset.summaryTitle;
+            
+            if (confirm(`Are you sure you want to delete "${summaryTitle}"? This action cannot be undone.`)) {
+                deleteSummary(summaryId, this);
+            }
+        });
+    });
+});
+
+function deleteSummary(summaryId, buttonElement) {
+    // Disable button and show loading state
+    buttonElement.disabled = true;
+    buttonElement.textContent = 'Deleting...';
+    
+    fetch('/api/delete-summary', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            summary_id: summaryId
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.error) {
+            alert('Error deleting summary: ' + data.error);
+            // Reset button state
+            buttonElement.disabled = false;
+            buttonElement.textContent = 'Delete';
+        } else {
+            // Remove the summary item from the page
+            const summaryItem = buttonElement.closest('.summary-item');
+            if (summaryItem) {
+                summaryItem.style.transition = 'opacity 0.3s ease';
+                summaryItem.style.opacity = '0';
+                setTimeout(() => {
+                    summaryItem.remove();
+                    // Check if there are no more summaries and show empty state if needed
+                    const summariesList = document.querySelector('.summaries-list');
+                    if (summariesList && summariesList.children.length === 0) {
+                        location.reload(); // Reload to show empty state
+                    }
+                }, 300);
+            }
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Failed to delete summary');
+        // Reset button state
+        buttonElement.disabled = false;
+        buttonElement.textContent = 'Delete';
+    });
+}
+</script>
+{% endblock %}
