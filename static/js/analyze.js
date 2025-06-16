@@ -32,6 +32,9 @@ class AnalyzeManager {
         // Process URLs
         document.getElementById('process-urls').addEventListener('click', this.processUrls.bind(this));
         
+        // Save URLs for later
+        document.getElementById('save-urls').addEventListener('click', this.saveUrlsForLater.bind(this));
+        
         // Navigation
         document.getElementById('back-to-step-1').addEventListener('click', () => this.showStep(1));
         document.getElementById('proceed-to-settings').addEventListener('click', () => this.showStep(3));
@@ -393,6 +396,55 @@ class AnalyzeManager {
         setTimeout(() => {
             window.location.href = '/history';
         }, 2000);
+    }
+    
+    async saveUrlsForLater() {
+        const urlText = document.getElementById('url-textarea').value.trim();
+        if (!urlText) {
+            AppUtils.showNotification('Please enter some URLs to save', 'warning');
+            return;
+        }
+        
+        const urls = urlText.split('\n').map(url => url.trim()).filter(url => url);
+        
+        if (urls.length === 0) {
+            AppUtils.showNotification('No valid URLs found', 'warning');
+            return;
+        }
+        
+        try {
+            AppUtils.showLoading('Saving URLs...');
+            
+            let savedCount = 0;
+            let skippedCount = 0;
+            
+            for (const url of urls) {
+                try {
+                    await AppUtils.apiRequest('/api/save-url', {
+                        method: 'POST',
+                        body: JSON.stringify({ url })
+                    });
+                    savedCount++;
+                } catch (error) {
+                    if (error.message.includes('already saved')) {
+                        skippedCount++;
+                    } else {
+                        throw error;
+                    }
+                }
+            }
+            
+            const message = `Saved ${savedCount} URLs` + (skippedCount > 0 ? ` (${skippedCount} already saved)` : '');
+            AppUtils.showNotification(message, 'success');
+            
+            // Clear the textarea
+            document.getElementById('url-textarea').value = '';
+            
+        } catch (error) {
+            AppUtils.showNotification('Failed to save URLs: ' + error.message, 'error');
+        } finally {
+            AppUtils.hideLoading();
+        }
     }
     
     async loadUserDefaults() {

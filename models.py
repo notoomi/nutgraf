@@ -58,6 +58,7 @@ class User(UserMixin, db.Model):
     
     # Relationships
     summaries = db.relationship('Summary', backref='user', lazy=True, cascade='all, delete-orphan')
+    saved_urls = db.relationship('SavedUrl', backref='user', lazy=True, cascade='all, delete-orphan')
     
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)
@@ -134,6 +135,27 @@ class Tag(db.Model):
     
     # Relationships
     summaries = db.relationship('SummaryTag', backref='tag', lazy=True)
+
+class SavedUrl(db.Model):
+    __tablename__ = 'saved_urls'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    
+    # URL metadata
+    url = db.Column(db.Text, nullable=False)
+    title = db.Column(db.Text)  # Will be populated when URL is fetched
+    description = db.Column(db.Text)  # Optional user description
+    
+    # Status tracking
+    is_analyzed = db.Column(db.Boolean, default=False, index=True)
+    
+    # Timestamps
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    def __repr__(self):
+        return f'<SavedUrl {self.id}: {self.url[:50]}...>'
 
 class SummaryTag(db.Model):
     __tablename__ = 'summary_tags'

@@ -181,6 +181,12 @@ def revoke_api_key():
     
     return redirect(url_for('main.settings'))
 
+@main_bp.route('/saved-urls')
+@login_required
+def saved_urls():
+    """Display saved URLs management page"""
+    return render_template('main/saved_urls.html')
+
 @main_bp.route('/api-docs')
 def api_documentation():
     """Display API documentation"""

@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify
 from flask_login import login_required, current_user
-from models import db, Summary, Tag, SummaryTag
+from models import db, Summary, Tag, SummaryTag, SavedUrl
 from services.article_extractor import ArticleExtractor
 from services.llm_service import LLMService
 from services.url_processor import URLProcessor
@@ -321,3 +321,252 @@ def debug_extract():
         
     except Exception as e:
         return jsonify({'error': str(e), 'debug': True}), 500
+
+@api_bp.route('/save-url', methods=['POST'])
+@login_required
+def save_url():
+    """Save a URL for later analysis"""
+    try:
+        data = request.get_json()
+        url = data.get('url', '').strip()
+        description = data.get('description', '').strip()
+        
+        if not url:
+            return jsonify({'error': 'URL is required'}), 400
+        
+        # Check if URL already exists for this user
+        existing_url = SavedUrl.query.filter_by(
+            user_id=current_user.id,
+            url=url
+        ).first()
+        
+        if existing_url:
+            return jsonify({'error': 'URL already saved'}), 400
+        
+        # Try to extract title for better organization
+        title = None
+        try:
+            extractor = ArticleExtractor()
+            result = extractor.extract(url)
+            if result:
+                title = result.get('title')
+        except:
+            pass  # Continue without title if extraction fails
+        
+        # Create saved URL
+        saved_url = SavedUrl(
+            user_id=current_user.id,
+            url=url,
+            title=title,
+            description=description
+        )
+        
+        db.session.add(saved_url)
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'saved_url': {
+                'id': saved_url.id,
+                'url': saved_url.url,
+                'title': saved_url.title,
+                'description': saved_url.description,
+                'created_at': saved_url.created_at.isoformat()
+            }
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@api_bp.route('/saved-urls', methods=['GET'])
+@login_required
+def get_saved_urls():
+    """Get all saved URLs for the current user"""
+    try:
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 20, type=int)
+        search = request.args.get('search', '').strip()
+        
+        query = SavedUrl.query.filter_by(user_id=current_user.id)
+        
+        if search:
+            query = query.filter(
+                db.or_(
+                    SavedUrl.url.contains(search),
+                    SavedUrl.title.contains(search),
+                    SavedUrl.description.contains(search)
+                )
+            )
+        
+        saved_urls = query.order_by(SavedUrl.created_at.desc()).paginate(
+            page=page, per_page=per_page, error_out=False
+        )
+        
+        # Get summary data for analyzed URLs
+        saved_urls_data = []
+        for url in saved_urls.items:
+            url_data = {
+                'id': url.id,
+                'url': url.url,
+                'title': url.title,
+                'description': url.description,
+                'is_analyzed': url.is_analyzed,
+                'created_at': url.created_at.isoformat(),
+                'updated_at': url.updated_at.isoformat()
+            }
+            
+            # If analyzed, get the most recent summary
+            if url.is_analyzed:
+                summary = Summary.query.filter_by(
+                    user_id=current_user.id,
+                    url=url.url
+                ).order_by(Summary.created_at.desc()).first()
+                
+                if summary:
+                    url_data['summary'] = {
+                        'id': summary.id,
+                        'text': summary.summary_text,
+                        'word_count': summary.word_count,
+                        'length_setting': summary.length_setting,
+                        'tone_setting': summary.tone_setting,
+                        'format_setting': summary.format_setting,
+                        'model_used': summary.model_used,
+                        'author': summary.author,
+                        'publication_date': summary.publication_date.isoformat() if summary.publication_date else None,
+                        'created_at': summary.created_at.isoformat()
+                    }
+            
+            saved_urls_data.append(url_data)
+        
+        return jsonify({
+            'saved_urls': saved_urls_data,
+            'pagination': {
+                'page': saved_urls.page,
+                'pages': saved_urls.pages,
+                'per_page': saved_urls.per_page,
+                'total': saved_urls.total
+            }
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@api_bp.route('/delete-saved-url', methods=['POST'])
+@login_required
+def delete_saved_url():
+    """Delete a saved URL"""
+    try:
+        data = request.get_json()
+        url_id = data.get('url_id')
+        
+        if not url_id:
+            return jsonify({'error': 'URL ID required'}), 400
+        
+        # Verify saved URL belongs to current user
+        saved_url = SavedUrl.query.filter_by(id=url_id, user_id=current_user.id).first()
+        if not saved_url:
+            return jsonify({'error': 'Saved URL not found'}), 404
+        
+        db.session.delete(saved_url)
+        db.session.commit()
+        
+        return jsonify({'success': True, 'message': 'Saved URL deleted successfully'})
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@api_bp.route('/analyze-saved-url', methods=['POST'])
+@login_required
+def analyze_saved_url():
+    """Analyze a saved URL and create a summary"""
+    try:
+        data = request.get_json()
+        url_id = data.get('url_id')
+        
+        if not url_id:
+            return jsonify({'error': 'URL ID required'}), 400
+        
+        # Verify saved URL belongs to current user
+        saved_url = SavedUrl.query.filter_by(id=url_id, user_id=current_user.id).first()
+        if not saved_url:
+            return jsonify({'error': 'Saved URL not found'}), 404
+        
+        # Extract article content
+        extractor = ArticleExtractor()
+        result = extractor.extract(saved_url.url)
+        
+        if not result:
+            return jsonify({'error': 'Failed to extract article content'}), 400
+        
+        # Use user's default settings for analysis
+        length = data.get('length', current_user.default_length)
+        tone = data.get('tone', current_user.default_tone)
+        format_type = data.get('format', current_user.default_format)
+        model = data.get('model', current_user.default_model)
+        
+        # Generate summary
+        llm_service = LLMService(current_user)
+        summary_result = llm_service.generate_summary(
+            content=result['content'],
+            length=length,
+            tone=tone,
+            format_type=format_type,
+            model=model
+        )
+        
+        if not summary_result:
+            return jsonify({'error': 'Failed to generate summary'}), 500
+        
+        # Parse publication date
+        pub_date = None
+        if result.get('publication_date'):
+            try:
+                pub_date = datetime.fromisoformat(result['publication_date'].replace('Z', '+00:00'))
+            except:
+                pass
+        
+        # Save summary to database
+        summary = Summary(
+            user_id=current_user.id,
+            url=saved_url.url,
+            title=result.get('title', saved_url.title),
+            author=result.get('author'),
+            publication_date=pub_date,
+            original_text=result['content'][:10000],
+            summary_text=summary_result['text'],
+            length_setting=length,
+            tone_setting=tone,
+            format_setting=format_type,
+            model_used=model,
+            word_count=summary_result['word_count']
+        )
+        
+        db.session.add(summary)
+        
+        # Mark saved URL as analyzed
+        saved_url.is_analyzed = True
+        saved_url.updated_at = datetime.utcnow()
+        
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'summary': {
+                'id': summary.id,
+                'text': summary_result['text'],
+                'word_count': summary_result['word_count'],
+                'metadata': {
+                    'title': summary.title,
+                    'author': summary.author,
+                    'publication_date': pub_date.isoformat() if pub_date else None,
+                    'url': summary.url,
+                    'analysis_date': summary.created_at.isoformat()
+                }
+            }
+        })
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500

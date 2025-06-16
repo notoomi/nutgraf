@@ -1,0 +1,846 @@
+{% extends "base.html" %}
+
+{% block title %}Saved URLs - Nutgraf{% endblock %}
+
+{% block extra_css %}
+<style>
+.saved-urls-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 2rem;
+}
+
+.page-header {
+    margin-bottom: 2rem;
+}
+
+.page-header h1 {
+    color: #1f2937;
+    margin-bottom: 0.5rem;
+}
+
+.page-header p {
+    color: #6b7280;
+}
+
+.controls-section {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+    gap: 1rem;
+}
+
+.search-box {
+    flex: 1;
+    max-width: 400px;
+}
+
+.search-box input {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.5rem;
+    font-size: 1rem;
+}
+
+.bulk-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.stats-section {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2rem;
+}
+
+.stat-card {
+    background: white;
+    padding: 1.5rem;
+    border-radius: 0.5rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    text-align: center;
+}
+
+.stat-number {
+    font-size: 2rem;
+    font-weight: bold;
+    color: #3b82f6;
+    margin-bottom: 0.5rem;
+}
+
+.stat-label {
+    color: #6b7280;
+    font-size: 0.875rem;
+}
+
+.saved-urls-list {
+    background: white;
+    border-radius: 0.5rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+}
+
+.saved-url-item {
+    padding: 1.5rem;
+    border-bottom: 1px solid #e5e7eb;
+    display: flex;
+    align-items: flex-start;
+    gap: 1rem;
+}
+
+.saved-url-item:last-child {
+    border-bottom: none;
+}
+
+.url-checkbox {
+    margin-top: 0.25rem;
+}
+
+.url-info {
+    flex: 1;
+}
+
+.url-title {
+    font-weight: 600;
+    color: #1f2937;
+    margin-bottom: 0.5rem;
+    line-height: 1.4;
+}
+
+.url-link {
+    color: #3b82f6;
+    text-decoration: none;
+    font-size: 0.875rem;
+    word-break: break-all;
+    margin-bottom: 0.5rem;
+    display: block;
+}
+
+.url-link:hover {
+    text-decoration: underline;
+}
+
+.url-description {
+    color: #6b7280;
+    font-size: 0.875rem;
+    margin-bottom: 0.5rem;
+}
+
+.url-meta {
+    display: flex;
+    gap: 1rem;
+    font-size: 0.75rem;
+    color: #9ca3af;
+}
+
+.url-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-shrink: 0;
+}
+
+.status-badge {
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-size: 0.75rem;
+    font-weight: 500;
+    text-transform: uppercase;
+}
+
+.status-badge.unanalyzed {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.status-badge.analyzed {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+.pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 2rem;
+}
+
+.pagination button {
+    padding: 0.5rem 1rem;
+    border: 1px solid #d1d5db;
+    background: white;
+    border-radius: 0.375rem;
+    cursor: pointer;
+}
+
+.pagination button:hover:not(:disabled) {
+    background: #f9fafb;
+}
+
+.pagination button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.pagination .current-page {
+    background: #3b82f6;
+    color: white;
+    border-color: #3b82f6;
+}
+
+.empty-state {
+    text-align: center;
+    padding: 4rem 2rem;
+    color: #6b7280;
+}
+
+.empty-state h3 {
+    margin-bottom: 1rem;
+    color: #374151;
+}
+
+.loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.loading-content {
+    background: white;
+    padding: 2rem;
+    border-radius: 0.5rem;
+    text-align: center;
+}
+
+.spinner {
+    width: 40px;
+    height: 40px;
+    border: 4px solid #e5e7eb;
+    border-top: 4px solid #3b82f6;
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+    margin: 0 auto 1rem;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.summary-popup {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.5rem;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+    padding: 1.5rem;
+    max-width: 600px;
+    width: 90%;
+    max-height: 80vh;
+    z-index: 1000;
+    display: none;
+    font-size: 0.875rem;
+    line-height: 1.4;
+    overflow-y: auto;
+}
+
+.summary-popup-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 999;
+    display: none;
+}
+
+.summary-popup-header {
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid #e5e7eb;
+}
+
+.summary-popup-meta {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+    font-size: 0.75rem;
+    color: #6b7280;
+}
+
+.summary-popup-meta span {
+    background: #f3f4f6;
+    padding: 0.125rem 0.375rem;
+    border-radius: 0.25rem;
+}
+
+.summary-popup-close {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+    color: #6b7280;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+}
+
+.summary-popup-close:hover {
+    background: #f3f4f6;
+    color: #374151;
+}
+
+.summary-popup-text {
+    color: #374151;
+    max-height: 400px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+}
+
+.summary-popup-text::-webkit-scrollbar {
+    width: 4px;
+}
+
+.summary-popup-text::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 2px;
+}
+
+.summary-popup-text::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 2px;
+}
+
+.summary-popup-text::-webkit-scrollbar-thumb:hover {
+    background: #a1a1a1;
+}
+
+.summary-popup-title {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: #1f2937;
+    margin-bottom: 1rem;
+    padding-right: 2rem;
+}
+
+@media (max-width: 768px) {
+    .saved-urls-container {
+        padding: 1rem;
+    }
+    
+    .controls-section {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 1rem;
+    }
+    
+    .search-box {
+        max-width: none;
+    }
+    
+    .saved-url-item {
+        flex-direction: column;
+        gap: 1rem;
+    }
+    
+    .url-actions {
+        align-self: flex-start;
+    }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="saved-urls-container">
+    <div class="page-header">
+        <h1>Saved URLs</h1>
+        <p>Manage your saved URLs and analyze them when ready</p>
+    </div>
+
+    <div class="controls-section">
+        <div class="search-box">
+            <input type="text" id="search-input" placeholder="Search saved URLs...">
+        </div>
+        <div class="bulk-actions">
+            <button class="btn btn-secondary" id="select-all-btn">Select All</button>
+            <button class="btn btn-primary" id="analyze-selected-btn" disabled>Analyze Selected</button>
+            <button class="btn btn-danger" id="delete-selected-btn" disabled>Delete Selected</button>
+        </div>
+    </div>
+
+    <div class="stats-section">
+        <div class="stat-card">
+            <div class="stat-number" id="total-count">0</div>
+            <div class="stat-label">Total Saved</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number" id="unanalyzed-count">0</div>
+            <div class="stat-label">Unanalyzed</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-number" id="analyzed-count">0</div>
+            <div class="stat-label">Analyzed</div>
+        </div>
+    </div>
+
+    <div class="saved-urls-list" id="saved-urls-list">
+        <!-- URLs will be loaded here -->
+    </div>
+
+    <div class="pagination" id="pagination">
+        <!-- Pagination will be loaded here -->
+    </div>
+
+    <!-- Loading overlay -->
+    <div class="loading-overlay" id="loading-overlay" style="display: none;">
+        <div class="loading-content">
+            <div class="spinner"></div>
+            <p id="loading-text">Loading...</p>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="{{ url_for('static', filename='js/main.js') }}"></script>
+<script>
+class SavedUrlsManager {
+    constructor() {
+        this.currentPage = 1;
+        this.searchQuery = '';
+        this.selectedUrls = new Set();
+        
+        this.initializeEventListeners();
+        this.loadSavedUrls();
+    }
+    
+    initializeEventListeners() {
+        // Search
+        document.getElementById('search-input').addEventListener('input', 
+            this.debounce((e) => {
+                this.searchQuery = e.target.value;
+                this.currentPage = 1;
+                this.loadSavedUrls();
+            }, 300)
+        );
+        
+        // Bulk actions
+        document.getElementById('select-all-btn').addEventListener('click', this.toggleSelectAll.bind(this));
+        document.getElementById('analyze-selected-btn').addEventListener('click', this.analyzeSelected.bind(this));
+        document.getElementById('delete-selected-btn').addEventListener('click', this.deleteSelected.bind(this));
+    }
+    
+    debounce(func, wait) {
+        let timeout;
+        return function executedFunction(...args) {
+            const later = () => {
+                clearTimeout(timeout);
+                func(...args);
+            };
+            clearTimeout(timeout);
+            timeout = setTimeout(later, wait);
+        };
+    }
+    
+    async loadSavedUrls() {
+        try {
+            this.showLoading('Loading saved URLs...');
+            
+            const params = new URLSearchParams({
+                page: this.currentPage,
+                per_page: 20
+            });
+            
+            if (this.searchQuery) {
+                params.append('search', this.searchQuery);
+            }
+            
+            const response = await AppUtils.apiRequest(`/api/saved-urls?${params}`);
+            
+            this.displaySavedUrls(response.saved_urls);
+            this.displayPagination(response.pagination);
+            this.updateStats(response);
+            
+        } catch (error) {
+            AppUtils.showNotification('Failed to load saved URLs: ' + error.message, 'error');
+        } finally {
+            this.hideLoading();
+        }
+    }
+    
+    displaySavedUrls(urls) {
+        const container = document.getElementById('saved-urls-list');
+        
+        if (urls.length === 0) {
+            container.innerHTML = `
+                <div class="empty-state">
+                    <h3>No saved URLs found</h3>
+                    <p>Start by saving some URLs from the <a href="/analyze">Analyze</a> page</p>
+                </div>
+            `;
+            return;
+        }
+        
+        container.innerHTML = urls.map(url => `
+            <div class="saved-url-item">
+                <input type="checkbox" class="url-checkbox" data-url-id="${url.id}">
+                <div class="url-info">
+                    <div class="url-title">
+                        ${url.title || 'Untitled'}
+                    </div>
+                    <a href="${url.url}" target="_blank" class="url-link">${url.url}</a>
+                    ${url.description ? `<div class="url-description">${url.description}</div>` : ''}
+                    <div class="url-meta">
+                        <span>Saved: ${new Date(url.created_at).toLocaleDateString()}</span>
+                        ${url.is_analyzed ? `<span>Analyzed: ${new Date(url.updated_at).toLocaleDateString()}</span>` : ''}
+                    </div>
+                </div>
+                <div class="url-actions">
+                    <span class="status-badge ${url.is_analyzed ? 'analyzed' : 'unanalyzed'}">
+                        ${url.is_analyzed ? 'Analyzed' : 'Unanalyzed'}
+                    </span>
+                    ${!url.is_analyzed ? `<button class="btn btn-primary btn-sm" onclick="savedUrlsManager.analyzeSingle(${url.id})">Analyze</button>` : ''}
+                    ${url.is_analyzed && url.summary ? `<button class="btn btn-secondary btn-sm" onclick="savedUrlsManager.showSummaryPopup('${url.title || 'Untitled'}', '${url.url}', ${url.summary.id})">View Summary</button>` : ''}
+                    <button class="btn btn-danger btn-sm" onclick="savedUrlsManager.deleteSingle(${url.id})">Delete</button>
+                </div>
+            </div>
+        `).join('');
+        
+        // Add event listeners to checkboxes
+        document.querySelectorAll('.url-checkbox').forEach(checkbox => {
+            checkbox.addEventListener('change', this.updateSelection.bind(this));
+        });
+        
+        // Initialize popup elements if they don't exist
+        this.initializePopupElements();
+    }
+    
+    displayPagination(pagination) {
+        const container = document.getElementById('pagination');
+        
+        if (pagination.pages <= 1) {
+            container.innerHTML = '';
+            return;
+        }
+        
+        let buttons = [];
+        
+        // Previous button
+        buttons.push(`
+            <button ${pagination.page === 1 ? 'disabled' : ''} 
+                    onclick="savedUrlsManager.goToPage(${pagination.page - 1})">
+                Previous
+            </button>
+        `);
+        
+        // Page numbers
+        for (let i = 1; i <= pagination.pages; i++) {
+            if (i === pagination.page) {
+                buttons.push(`<button class="current-page">${i}</button>`);
+            } else if (i <= 3 || i >= pagination.pages - 2 || Math.abs(i - pagination.page) <= 1) {
+                buttons.push(`<button onclick="savedUrlsManager.goToPage(${i})">${i}</button>`);
+            } else if (i === 4 && pagination.page > 6) {
+                buttons.push('<span>...</span>');
+            } else if (i === pagination.pages - 3 && pagination.page < pagination.pages - 5) {
+                buttons.push('<span>...</span>');
+            }
+        }
+        
+        // Next button
+        buttons.push(`
+            <button ${pagination.page === pagination.pages ? 'disabled' : ''} 
+                    onclick="savedUrlsManager.goToPage(${pagination.page + 1})">
+                Next
+            </button>
+        `);
+        
+        container.innerHTML = buttons.join('');
+    }
+    
+    updateStats(response) {
+        const total = response.pagination.total;
+        const analyzed = response.saved_urls.filter(url => url.is_analyzed).length;
+        const unanalyzed = total - analyzed;
+        
+        document.getElementById('total-count').textContent = total;
+        document.getElementById('analyzed-count').textContent = analyzed;
+        document.getElementById('unanalyzed-count').textContent = unanalyzed;
+    }
+    
+    updateSelection() {
+        const checkboxes = document.querySelectorAll('.url-checkbox');
+        const checkedBoxes = document.querySelectorAll('.url-checkbox:checked');
+        
+        this.selectedUrls.clear();
+        checkedBoxes.forEach(checkbox => {
+            this.selectedUrls.add(parseInt(checkbox.dataset.urlId));
+        });
+        
+        const hasSelection = this.selectedUrls.size > 0;
+        document.getElementById('analyze-selected-btn').disabled = !hasSelection;
+        document.getElementById('delete-selected-btn').disabled = !hasSelection;
+        
+        const selectAllBtn = document.getElementById('select-all-btn');
+        if (checkedBoxes.length === checkboxes.length && checkboxes.length > 0) {
+            selectAllBtn.textContent = 'Deselect All';
+        } else {
+            selectAllBtn.textContent = 'Select All';
+        }
+    }
+    
+    toggleSelectAll() {
+        const checkboxes = document.querySelectorAll('.url-checkbox');
+        const checkedBoxes = document.querySelectorAll('.url-checkbox:checked');
+        const shouldCheck = checkedBoxes.length === 0;
+        
+        checkboxes.forEach(checkbox => {
+            checkbox.checked = shouldCheck;
+        });
+        
+        this.updateSelection();
+    }
+    
+    async analyzeSingle(urlId) {
+        try {
+            this.showLoading('Analyzing URL...');
+            
+            const response = await AppUtils.apiRequest('/api/analyze-saved-url', {
+                method: 'POST',
+                body: JSON.stringify({ url_id: urlId })
+            });
+            
+            AppUtils.showNotification('URL analyzed successfully!', 'success');
+            this.loadSavedUrls(); // Reload to update status
+            
+        } catch (error) {
+            AppUtils.showNotification('Failed to analyze URL: ' + error.message, 'error');
+        } finally {
+            this.hideLoading();
+        }
+    }
+    
+    async analyzeSelected() {
+        if (this.selectedUrls.size === 0) return;
+        
+        try {
+            this.showLoading(`Analyzing ${this.selectedUrls.size} URLs...`);
+            
+            let successCount = 0;
+            let errorCount = 0;
+            
+            for (const urlId of this.selectedUrls) {
+                try {
+                    await AppUtils.apiRequest('/api/analyze-saved-url', {
+                        method: 'POST',
+                        body: JSON.stringify({ url_id: urlId })
+                    });
+                    successCount++;
+                } catch (error) {
+                    errorCount++;
+                }
+            }
+            
+            const message = `Analyzed ${successCount} URLs` + 
+                           (errorCount > 0 ? ` (${errorCount} failed)` : '');
+            AppUtils.showNotification(message, successCount > 0 ? 'success' : 'error');
+            
+            this.selectedUrls.clear();
+            this.loadSavedUrls();
+            
+        } catch (error) {
+            AppUtils.showNotification('Failed to analyze URLs: ' + error.message, 'error');
+        } finally {
+            this.hideLoading();
+        }
+    }
+    
+    async deleteSingle(urlId) {
+        if (!confirm('Are you sure you want to delete this URL?')) return;
+        
+        try {
+            await AppUtils.apiRequest('/api/delete-saved-url', {
+                method: 'POST',
+                body: JSON.stringify({ url_id: urlId })
+            });
+            
+            AppUtils.showNotification('URL deleted successfully', 'success');
+            this.loadSavedUrls();
+            
+        } catch (error) {
+            AppUtils.showNotification('Failed to delete URL: ' + error.message, 'error');
+        }
+    }
+    
+    async deleteSelected() {
+        if (this.selectedUrls.size === 0) return;
+        
+        if (!confirm(`Are you sure you want to delete ${this.selectedUrls.size} URLs?`)) return;
+        
+        try {
+            this.showLoading(`Deleting ${this.selectedUrls.size} URLs...`);
+            
+            let successCount = 0;
+            for (const urlId of this.selectedUrls) {
+                try {
+                    await AppUtils.apiRequest('/api/delete-saved-url', {
+                        method: 'POST',
+                        body: JSON.stringify({ url_id: urlId })
+                    });
+                    successCount++;
+                } catch (error) {
+                    console.error('Failed to delete URL:', urlId, error);
+                }
+            }
+            
+            AppUtils.showNotification(`Deleted ${successCount} URLs`, 'success');
+            this.selectedUrls.clear();
+            this.loadSavedUrls();
+            
+        } catch (error) {
+            AppUtils.showNotification('Failed to delete URLs: ' + error.message, 'error');
+        } finally {
+            this.hideLoading();
+        }
+    }
+    
+    goToPage(page) {
+        this.currentPage = page;
+        this.loadSavedUrls();
+    }
+    
+    showLoading(text) {
+        document.getElementById('loading-text').textContent = text;
+        document.getElementById('loading-overlay').style.display = 'flex';
+    }
+    
+    hideLoading() {
+        document.getElementById('loading-overlay').style.display = 'none';
+    }
+    
+    initializePopupElements() {
+        // Create backdrop if it doesn't exist
+        if (!document.querySelector('.summary-popup-backdrop')) {
+            const backdrop = document.createElement('div');
+            backdrop.className = 'summary-popup-backdrop';
+            backdrop.addEventListener('click', () => this.closeSummaryPopup());
+            document.body.appendChild(backdrop);
+        }
+        
+        // Create popup if it doesn't exist
+        if (!document.querySelector('.summary-popup')) {
+            const popup = document.createElement('div');
+            popup.className = 'summary-popup';
+            document.body.appendChild(popup);
+        }
+    }
+    
+    async showSummaryPopup(title, url, summaryId) {
+        try {
+            this.showLoading('Loading summary...');
+            
+            // Fetch the full summary data
+            const response = await fetch(`/summary/${summaryId}`);
+            if (!response.ok) {
+                throw new Error('Failed to load summary');
+            }
+            
+            // We need to get the summary data via API since the HTML page doesn't have JSON
+            // Let's fetch it from our existing saved URLs data instead
+            const savedUrlsResponse = await AppUtils.apiRequest('/api/saved-urls?per_page=100');
+            const savedUrl = savedUrlsResponse.saved_urls.find(url => url.summary && url.summary.id === summaryId);
+            
+            if (!savedUrl || !savedUrl.summary) {
+                throw new Error('Summary not found');
+            }
+            
+            const summaryData = savedUrl.summary;
+            
+            // Format the popup content
+            const formatDate = (dateStr) => {
+                if (!dateStr) return 'Unknown';
+                return new Date(dateStr).toLocaleDateString();
+            };
+            
+            const popup = document.querySelector('.summary-popup');
+            const backdrop = document.querySelector('.summary-popup-backdrop');
+            
+            popup.innerHTML = `
+                <button class="summary-popup-close" onclick="savedUrlsManager.closeSummaryPopup()">&times;</button>
+                <div class="summary-popup-title">${title}</div>
+                <div class="summary-popup-header">
+                    <div class="summary-popup-meta">
+                        <span>${summaryData.length_setting}</span>
+                        <span>${summaryData.tone_setting}</span>
+                        <span>${summaryData.format_setting}</span>
+                        <span>${summaryData.word_count} words</span>
+                    </div>
+                    <div style="font-size: 0.75rem; color: #9ca3af; margin-top: 0.5rem;">
+                        ${summaryData.model_used} • ${formatDate(summaryData.created_at)}
+                        ${summaryData.author ? ` • by ${summaryData.author}` : ''}
+                    </div>
+                    <a href="${url}" target="_blank" style="font-size: 0.75rem; color: #3b82f6; text-decoration: none; display: block; margin-top: 0.25rem;">${url}</a>
+                </div>
+                <div class="summary-popup-text">${summaryData.text}</div>
+                <div style="margin-top: 1rem; text-align: right;">
+                    <a href="/summary/${summaryId}" class="btn btn-primary">View Full Summary Page</a>
+                </div>
+            `;
+            
+            backdrop.style.display = 'block';
+            popup.style.display = 'block';
+            
+            // Add escape key listener
+            document.addEventListener('keydown', this.handleEscapeKey.bind(this));
+            
+        } catch (error) {
+            AppUtils.showNotification('Failed to load summary: ' + error.message, 'error');
+        } finally {
+            this.hideLoading();
+        }
+    }
+    
+    closeSummaryPopup() {
+        const popup = document.querySelector('.summary-popup');
+        const backdrop = document.querySelector('.summary-popup-backdrop');
+        
+        if (popup) popup.style.display = 'none';
+        if (backdrop) backdrop.style.display = 'none';
+        
+        // Remove escape key listener
+        document.removeEventListener('keydown', this.handleEscapeKey.bind(this));
+    }
+    
+    handleEscapeKey(event) {
+        if (event.key === 'Escape') {
+            this.closeSummaryPopup();
+        }
+    }
+}
+
+// Initialize when DOM is loaded
+let savedUrlsManager;
+document.addEventListener('DOMContentLoaded', function() {
+    savedUrlsManager = new SavedUrlsManager();
+});
+</script>
+{% endblock %}
