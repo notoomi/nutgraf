@@ -4,6 +4,7 @@ from models import db, Summary, Tag, SummaryTag, SavedUrl
 from services.article_extractor import ArticleExtractor
 from services.llm_service import LLMService
 from services.url_processor import URLProcessor
+from services.bookmark_parser import bookmark_parser
 import json
 import csv
 import io
@@ -797,6 +798,186 @@ def import_saved_urls():
             result['message'] = f'Successfully imported {imported_count} URLs, skipped {skipped_count} duplicates'
         
         return jsonify(result)
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@api_bp.route('/upload-bookmarks', methods=['POST'])
+@login_required
+def upload_bookmarks():
+    """Parse uploaded bookmark file and return URLs"""
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file provided'}), 400
+        
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': 'No file selected'}), 400
+        
+        # Check file extension
+        allowed_extensions = ['.html', '.htm']
+        if not any(file.filename.lower().endswith(ext) for ext in allowed_extensions):
+            return jsonify({'error': 'File must be an HTML bookmark file (.html or .htm)'}), 400
+        
+        # Read file content
+        try:
+            content = file.read().decode('utf-8')
+        except UnicodeDecodeError:
+            try:
+                # Try different encodings
+                file.seek(0)
+                content = file.read().decode('latin-1')
+            except UnicodeDecodeError:
+                return jsonify({'error': 'Unable to read file. Please ensure it\'s a valid text file.'}), 400
+        
+        # Validate bookmark file
+        validation = bookmark_parser.validate_bookmark_file(content)
+        if not validation['is_valid']:
+            return jsonify({
+                'error': f'Invalid bookmark file: {validation["message"]}',
+                'suggestion': 'Please export bookmarks from your browser in HTML format'
+            }), 400
+        
+        # Parse bookmarks
+        result = bookmark_parser.parse_bookmark_file(content)
+        
+        if result['total_count'] == 0:
+            return jsonify({
+                'error': 'No valid URLs found in bookmark file',
+                'parsing_errors': result.get('parsing_errors', [])
+            }), 400
+        
+        # Extract just the URLs for processing
+        urls = [bookmark['url'] for bookmark in result['bookmarks']]
+        
+        # Process URLs using existing URL processor
+        url_processor = URLProcessor()
+        processed_urls = []
+        
+        # Process all URLs, don't limit here (frontend will handle pagination)
+        for url in urls:
+            url_result = url_processor.process_url(url.strip())
+            if url_result:
+                processed_urls.append(url_result)
+        
+        return jsonify({
+            'urls': processed_urls,
+            'total_bookmarks': result['total_count'],
+            'processed_count': len(processed_urls),
+            'folders_found': result.get('folders', []),
+            'parsing_info': {
+                'file_type': result.get('file_type'),
+                'validation_confidence': validation.get('confidence', 0),
+                'errors': result.get('parsing_errors', [])
+            }
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@api_bp.route('/import-bookmarks-as-saved', methods=['POST'])
+@login_required
+def import_bookmarks_as_saved():
+    """Import bookmark file URLs directly as saved URLs"""
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file provided'}), 400
+        
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': 'No file selected'}), 400
+        
+        # Check file extension
+        allowed_extensions = ['.html', '.htm']
+        if not any(file.filename.lower().endswith(ext) for ext in allowed_extensions):
+            return jsonify({'error': 'File must be an HTML bookmark file (.html or .htm)'}), 400
+        
+        # Read and parse file
+        try:
+            content = file.read().decode('utf-8')
+        except UnicodeDecodeError:
+            try:
+                file.seek(0)
+                content = file.read().decode('latin-1')
+            except UnicodeDecodeError:
+                return jsonify({'error': 'Unable to read file encoding'}), 400
+        
+        # Validate bookmark file
+        validation = bookmark_parser.validate_bookmark_file(content)
+        if not validation['is_valid']:
+            return jsonify({
+                'error': f'Invalid bookmark file: {validation["message"]}'
+            }), 400
+        
+        # Parse bookmarks
+        result = bookmark_parser.parse_bookmark_file(content)
+        
+        if result['total_count'] == 0:
+            return jsonify({'error': 'No valid URLs found in bookmark file'}), 400
+        
+        # Import bookmarks as saved URLs
+        imported_count = 0
+        skipped_count = 0
+        errors = []
+        
+        for bookmark in result['bookmarks']:
+            try:
+                url = bookmark['url']
+                title = bookmark.get('title', 'Untitled')
+                folder = bookmark.get('folder')
+                
+                # Check if URL already exists
+                existing_url = SavedUrl.query.filter_by(
+                    user_id=current_user.id,
+                    url=url
+                ).first()
+                
+                if existing_url:
+                    skipped_count += 1
+                    continue
+                
+                # Create description from folder if available
+                description = f"From bookmark folder: {folder}" if folder else "Imported from bookmarks"
+                
+                # Create new saved URL
+                saved_url = SavedUrl(
+                    user_id=current_user.id,
+                    url=url,
+                    title=title,
+                    description=description,
+                    is_analyzed=False
+                )
+                
+                # Set creation date from bookmark if available
+                if bookmark.get('add_date'):
+                    saved_url.created_at = bookmark['add_date']
+                
+                db.session.add(saved_url)
+                imported_count += 1
+                
+                # Commit in batches to avoid memory issues
+                if imported_count % 50 == 0:
+                    db.session.commit()
+                
+            except Exception as e:
+                errors.append(f"Error importing {bookmark.get('url', 'unknown')}: {str(e)}")
+                if len(errors) >= 10:  # Limit error reporting
+                    break
+                continue
+        
+        # Final commit
+        db.session.commit()
+        
+        return jsonify({
+            'success': True,
+            'imported': imported_count,
+            'skipped': skipped_count,
+            'total_bookmarks': result['total_count'],
+            'folders_found': result.get('folders', []),
+            'errors': errors,
+            'message': f'Successfully imported {imported_count} bookmarks, skipped {skipped_count} duplicates'
+        })
         
     except Exception as e:
         db.session.rollback()

@@ -5,12 +5,21 @@ class AnalyzeManager {
         this.currentStep = 1;
         this.processedUrls = [];
         this.selectedUrls = [];
+        this.selectedUrlIndices = new Set(); // Track selected URL indices across pages
         this.summarySettings = {
             length: 'brief',
             tone: 'neutral',
             format: 'prose',
             model: 'gpt-3.5-turbo',
             customWordCount: 250
+        };
+        
+        // Pagination state
+        this.pagination = {
+            currentPage: 1,
+            urlsPerPage: 50,
+            totalUrls: 0,
+            totalPages: 0
         };
         
         this.initializeEventListeners();
@@ -42,6 +51,10 @@ class AnalyzeManager {
         
         // URL selection
         document.getElementById('select-all').addEventListener('change', this.toggleSelectAll.bind(this));
+        
+        // Pagination
+        document.getElementById('prev-page').addEventListener('click', () => this.goToPage(this.pagination.currentPage - 1));
+        document.getElementById('next-page').addEventListener('click', () => this.goToPage(this.pagination.currentPage + 1));
         
         // Settings
         document.querySelectorAll('input[name="length"]').forEach(radio => {
@@ -75,19 +88,26 @@ class AnalyzeManager {
         document.getElementById('file-name').textContent = file.name;
         
         try {
-            const content = await this.readFileContent(file);
-            const fileType = file.name.split('.').pop().toLowerCase();
+            const fileExtension = file.name.split('.').pop().toLowerCase();
             
-            const response = await AppUtils.apiRequest('/api/process-urls', {
-                method: 'POST',
-                body: JSON.stringify({
-                    content: content,
-                    type: fileType
-                })
-            });
-            
-            this.displayProcessedUrls(response.urls);
-            AppUtils.showNotification(`Processed ${response.total} URLs from file`, 'success');
+            // Handle bookmark files differently
+            if (fileExtension === 'html' || fileExtension === 'htm') {
+                await this.handleBookmarkFile(file);
+            } else {
+                // Handle regular text/CSV files
+                const content = await this.readFileContent(file);
+                
+                const response = await AppUtils.apiRequest('/api/process-urls', {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        content: content,
+                        type: fileExtension
+                    })
+                });
+                
+                this.displayProcessedUrls(response.urls);
+                AppUtils.showNotification(`Processed ${response.total} URLs from file`, 'success');
+            }
             
         } catch (error) {
             AppUtils.showNotification('Failed to process file: ' + error.message, 'error');
@@ -166,15 +186,42 @@ class AnalyzeManager {
     }
     
     displayProcessedUrls(urls) {
+        // Store all URLs and setup pagination
+        this.processedUrls = urls;
+        this.selectedUrlIndices.clear(); // Reset selection tracking
+        this.pagination.totalUrls = urls.length;
+        this.pagination.totalPages = Math.ceil(urls.length / this.pagination.urlsPerPage);
+        this.pagination.currentPage = 1;
+        
+        // Show pagination if needed
+        const paginationContainer = document.getElementById('url-pagination');
+        if (urls.length > this.pagination.urlsPerPage) {
+            paginationContainer.style.display = 'block';
+            this.updatePaginationUI();
+        } else {
+            paginationContainer.style.display = 'none';
+        }
+        
+        // Display current page
+        this.displayCurrentPage();
+    }
+    
+    displayCurrentPage() {
         const urlList = document.getElementById('url-list');
         urlList.innerHTML = '';
         
-        urls.forEach((urlData, index) => {
+        // Calculate pagination bounds
+        const startIndex = (this.pagination.currentPage - 1) * this.pagination.urlsPerPage;
+        const endIndex = Math.min(startIndex + this.pagination.urlsPerPage, this.processedUrls.length);
+        const currentPageUrls = this.processedUrls.slice(startIndex, endIndex);
+        
+        currentPageUrls.forEach((urlData, localIndex) => {
+            const globalIndex = startIndex + localIndex;
             const urlItem = document.createElement('div');
             urlItem.className = 'url-item';
             
             urlItem.innerHTML = `
-                <input type="checkbox" class="url-checkbox" data-index="${index}" 
+                <input type="checkbox" class="url-checkbox" data-index="${globalIndex}" 
                        ${urlData.accessible ? '' : 'disabled'}>
                 <div class="url-info">
                     <div class="url-title">${urlData.title}</div>
@@ -186,34 +233,163 @@ class AnalyzeManager {
             urlList.appendChild(urlItem);
         });
         
-        // Add event listeners to checkboxes
+        // Add event listeners to checkboxes and restore selection state
         document.querySelectorAll('.url-checkbox').forEach(checkbox => {
-            checkbox.addEventListener('change', this.updateSelectionCount.bind(this));
+            const index = parseInt(checkbox.dataset.index);
+            // Restore selection state from our tracking
+            checkbox.checked = this.selectedUrlIndices.has(index);
+            checkbox.addEventListener('change', this.handleUrlSelection.bind(this));
         });
         
         this.updateSelectionCount();
+        this.updateSelectAllState();
+        this.updatePaginationUI();
+    }
+    
+    updatePaginationUI() {
+        // Update pagination info text
+        const startIndex = (this.pagination.currentPage - 1) * this.pagination.urlsPerPage + 1;
+        const endIndex = Math.min(this.pagination.currentPage * this.pagination.urlsPerPage, this.pagination.totalUrls);
+        
+        document.getElementById('pagination-info-text').textContent = 
+            `Showing ${startIndex}-${endIndex} of ${this.pagination.totalUrls} URLs`;
+        
+        // Update prev/next buttons
+        document.getElementById('prev-page').disabled = this.pagination.currentPage === 1;
+        document.getElementById('next-page').disabled = this.pagination.currentPage === this.pagination.totalPages;
+        
+        // Update page numbers
+        this.updatePageNumbers();
+    }
+    
+    updatePageNumbers() {
+        const pagesContainer = document.getElementById('pagination-pages');
+        pagesContainer.innerHTML = '';
+        
+        const currentPage = this.pagination.currentPage;
+        const totalPages = this.pagination.totalPages;
+        
+        // Show up to 5 page numbers with smart truncation
+        let startPage = Math.max(1, currentPage - 2);
+        let endPage = Math.min(totalPages, currentPage + 2);
+        
+        // Adjust range if we're near the beginning or end
+        if (currentPage <= 3) {
+            endPage = Math.min(5, totalPages);
+        }
+        if (currentPage >= totalPages - 2) {
+            startPage = Math.max(1, totalPages - 4);
+        }
+        
+        // Add first page and ellipsis if needed
+        if (startPage > 1) {
+            this.addPageButton(1, pagesContainer);
+            if (startPage > 2) {
+                const ellipsis = document.createElement('span');
+                ellipsis.textContent = '...';
+                ellipsis.style.padding = '0.5rem';
+                pagesContainer.appendChild(ellipsis);
+            }
+        }
+        
+        // Add page numbers
+        for (let i = startPage; i <= endPage; i++) {
+            this.addPageButton(i, pagesContainer);
+        }
+        
+        // Add last page and ellipsis if needed
+        if (endPage < totalPages) {
+            if (endPage < totalPages - 1) {
+                const ellipsis = document.createElement('span');
+                ellipsis.textContent = '...';
+                ellipsis.style.padding = '0.5rem';
+                pagesContainer.appendChild(ellipsis);
+            }
+            this.addPageButton(totalPages, pagesContainer);
+        }
+    }
+    
+    addPageButton(pageNum, container) {
+        const button = document.createElement('button');
+        button.className = `page-btn ${pageNum === this.pagination.currentPage ? 'active' : ''}`;
+        button.textContent = pageNum;
+        button.addEventListener('click', () => this.goToPage(pageNum));
+        container.appendChild(button);
+    }
+    
+    goToPage(pageNum) {
+        if (pageNum < 1 || pageNum > this.pagination.totalPages || pageNum === this.pagination.currentPage) {
+            return;
+        }
+        
+        this.pagination.currentPage = pageNum;
+        this.displayCurrentPage();
     }
     
     toggleSelectAll() {
         const selectAll = document.getElementById('select-all');
         const checkboxes = document.querySelectorAll('.url-checkbox:not([disabled])');
         
+        if (selectAll.checked) {
+            // Select all accessible URLs across all pages
+            this.processedUrls.forEach((urlData, index) => {
+                if (urlData.accessible) {
+                    this.selectedUrlIndices.add(index);
+                }
+            });
+        } else {
+            // Deselect all URLs
+            this.selectedUrlIndices.clear();
+        }
+        
+        // Update current page checkboxes
         checkboxes.forEach(checkbox => {
-            checkbox.checked = selectAll.checked;
+            const index = parseInt(checkbox.dataset.index);
+            checkbox.checked = this.selectedUrlIndices.has(index);
         });
         
         this.updateSelectionCount();
     }
     
+    handleUrlSelection(event) {
+        const checkbox = event.target;
+        const index = parseInt(checkbox.dataset.index);
+        
+        if (checkbox.checked) {
+            this.selectedUrlIndices.add(index);
+        } else {
+            this.selectedUrlIndices.delete(index);
+        }
+        
+        this.updateSelectionCount();
+        this.updateSelectAllState();
+    }
+    
     updateSelectionCount() {
-        const checkboxes = document.querySelectorAll('.url-checkbox:checked');
-        const count = checkboxes.length;
+        const count = this.selectedUrlIndices.size;
         
         document.querySelector('.selection-count').textContent = `${count} selected`;
         
         // Update proceed button state
         const proceedButton = document.getElementById('proceed-to-settings');
         proceedButton.disabled = count === 0;
+    }
+    
+    updateSelectAllState() {
+        const selectAll = document.getElementById('select-all');
+        const totalAccessibleUrls = this.processedUrls.filter(url => url.accessible).length;
+        const selectedCount = this.selectedUrlIndices.size;
+        
+        if (selectedCount === 0) {
+            selectAll.checked = false;
+            selectAll.indeterminate = false;
+        } else if (selectedCount === totalAccessibleUrls) {
+            selectAll.checked = true;
+            selectAll.indeterminate = false;
+        } else {
+            selectAll.checked = false;
+            selectAll.indeterminate = true;
+        }
     }
     
     handleLengthChange(event) {
@@ -238,10 +414,8 @@ class AnalyzeManager {
     }
     
     async generateSummaries() {
-        // Get selected URLs
-        const selectedCheckboxes = document.querySelectorAll('.url-checkbox:checked');
-        this.selectedUrls = Array.from(selectedCheckboxes).map(checkbox => {
-            const index = parseInt(checkbox.dataset.index);
+        // Get selected URLs from our tracking set
+        this.selectedUrls = Array.from(this.selectedUrlIndices).map(index => {
             return this.processedUrls[index];
         });
         
@@ -383,6 +557,7 @@ class AnalyzeManager {
     resetToStep1() {
         this.processedUrls = [];
         this.selectedUrls = [];
+        this.selectedUrlIndices.clear();
         document.getElementById('url-textarea').value = '';
         document.getElementById('file-name').textContent = 'No file selected';
         document.getElementById('rss-input').value = '';
@@ -442,6 +617,47 @@ class AnalyzeManager {
             
         } catch (error) {
             AppUtils.showNotification('Failed to save URLs: ' + error.message, 'error');
+        } finally {
+            AppUtils.hideLoading();
+        }
+    }
+    
+    async handleBookmarkFile(file) {
+        try {
+            AppUtils.showLoading('Parsing bookmark file...');
+            
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            const response = await fetch('/api/upload-bookmarks', {
+                method: 'POST',
+                body: formData
+            });
+            
+            const result = await response.json();
+            
+            if (!response.ok) {
+                throw new Error(result.error || 'Failed to parse bookmark file');
+            }
+            
+            // Display parsed URLs
+            this.processedUrls = result.urls;
+            this.displayProcessedUrls(result.urls);
+            this.showStep(2);
+            
+            // Show summary of bookmark parsing
+            let message = `Found ${result.total_bookmarks} bookmarks, processed ${result.processed_count} URLs`;
+            if (result.folders_found && result.folders_found.length > 0) {
+                message += `\nFolders found: ${result.folders_found.slice(0, 3).join(', ')}`;
+                if (result.folders_found.length > 3) {
+                    message += ` and ${result.folders_found.length - 3} more`;
+                }
+            }
+            
+            AppUtils.showNotification(message, 'success');
+            
+        } catch (error) {
+            AppUtils.showNotification('Failed to parse bookmark file: ' + error.message, 'error');
         } finally {
             AppUtils.hideLoading();
         }

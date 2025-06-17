@@ -542,7 +542,14 @@
         </div>
         <div class="bulk-actions">
             <div class="action-group">
-                <button class="btn btn-secondary" id="select-all-btn">Select All</button>
+                <div class="dropdown">
+                    <button class="btn btn-secondary dropdown-toggle" id="select-dropdown">Select</button>
+                    <div class="dropdown-menu" id="select-menu">
+                        <button class="dropdown-item" id="select-page-btn">Select All on This Page</button>
+                        <button class="dropdown-item" id="select-all-pages-btn">Select All on All Pages</button>
+                        <button class="dropdown-item" id="deselect-all-btn">Deselect All</button>
+                    </div>
+                </div>
                 <button class="btn btn-primary" id="analyze-selected-btn" disabled>Analyze Selected</button>
                 <button class="btn btn-danger" id="delete-selected-btn" disabled>Delete Selected</button>
             </div>
@@ -550,11 +557,18 @@
                 <div class="dropdown">
                     <button class="btn btn-outline dropdown-toggle" id="export-dropdown">Export</button>
                     <div class="dropdown-menu" id="export-menu">
-                        <button class="dropdown-item" onclick="savedUrlsManager.showExportModal()">Export URLs...</button>
+                        <button class="dropdown-item" id="export-urls-btn">Export URLs...</button>
                     </div>
                 </div>
-                <button class="btn btn-outline" id="import-btn">Import CSV</button>
-                <input type="file" id="import-file" accept=".csv" style="display: none;">
+                <div class="dropdown">
+                    <button class="btn btn-outline dropdown-toggle" id="import-dropdown">Import</button>
+                    <div class="dropdown-menu" id="import-menu">
+                        <button class="dropdown-item" id="import-csv-btn">Import CSV</button>
+                        <button class="dropdown-item" id="import-bookmarks-btn">Import Bookmarks</button>
+                    </div>
+                </div>
+                <input type="file" id="import-csv-file" accept=".csv" style="display: none;">
+                <input type="file" id="import-bookmark-file" accept=".html,.htm" style="display: none;">
             </div>
         </div>
     </div>
@@ -595,10 +609,24 @@
         <div class="modal-content">
             <div class="modal-header">
                 <h3>Export Saved URLs</h3>
-                <button class="modal-close" onclick="savedUrlsManager.closeExportModal()">&times;</button>
+                <button class="modal-close" id="export-modal-close">&times;</button>
             </div>
             <div class="modal-body">
                 <div class="export-options">
+                    <div class="option-group">
+                        <h4>Export Scope</h4>
+                        <label class="radio-option">
+                            <input type="radio" name="export-scope" value="all" checked>
+                            <span>All URLs</span>
+                            <small>Export all saved URLs (respects current search filter)</small>
+                        </label>
+                        <label class="radio-option">
+                            <input type="radio" name="export-scope" value="selected" id="export-selected-option">
+                            <span>Selected URLs Only (<span id="selected-count-display">0</span> selected)</span>
+                            <small>Export only the URLs you have selected</small>
+                        </label>
+                    </div>
+                    
                     <div class="option-group">
                         <h4>Export Format</h4>
                         <label class="radio-option">
@@ -613,7 +641,7 @@
                         </label>
                     </div>
                     
-                    <div class="option-group">
+                    <div class="option-group" id="filter-options">
                         <h4>Include URLs</h4>
                         <label class="checkbox-option">
                             <input type="checkbox" id="include-analyzed" checked>
@@ -627,8 +655,8 @@
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="savedUrlsManager.closeExportModal()">Cancel</button>
-                <button class="btn btn-primary" onclick="savedUrlsManager.executeExport()">Export</button>
+                <button class="btn btn-secondary" id="export-modal-cancel">Cancel</button>
+                <button class="btn btn-primary" id="export-modal-export">Export</button>
             </div>
         </div>
     </div>
@@ -643,6 +671,7 @@ class SavedUrlsManager {
         this.currentPage = 1;
         this.searchQuery = '';
         this.selectedUrls = new Set();
+        this.allUrlIds = new Set(); // Track all available URL IDs across all pages
         
         this.initializeEventListeners();
         this.loadSavedUrls();
@@ -654,24 +683,40 @@ class SavedUrlsManager {
             this.debounce((e) => {
                 this.searchQuery = e.target.value;
                 this.currentPage = 1;
+                // Clear selections when search changes since results will be different
+                this.selectedUrls.clear();
                 this.loadSavedUrls();
             }, 300)
         );
         
         // Bulk actions
-        document.getElementById('select-all-btn').addEventListener('click', this.toggleSelectAll.bind(this));
+        document.getElementById('select-dropdown').addEventListener('click', this.toggleSelectDropdown.bind(this));
+        document.getElementById('select-page-btn').addEventListener('click', this.selectAllOnPage.bind(this));
+        document.getElementById('select-all-pages-btn').addEventListener('click', this.selectAllOnAllPages.bind(this));
+        document.getElementById('deselect-all-btn').addEventListener('click', this.deselectAll.bind(this));
         document.getElementById('analyze-selected-btn').addEventListener('click', this.analyzeSelected.bind(this));
         document.getElementById('delete-selected-btn').addEventListener('click', this.deleteSelected.bind(this));
         
         // Export/Import actions
         document.getElementById('export-dropdown').addEventListener('click', this.toggleExportDropdown.bind(this));
-        document.getElementById('import-btn').addEventListener('click', () => document.getElementById('import-file').click());
-        document.getElementById('import-file').addEventListener('change', this.handleImport.bind(this));
+        document.getElementById('import-dropdown').addEventListener('click', this.toggleImportDropdown.bind(this));
+        document.getElementById('export-urls-btn').addEventListener('click', this.showExportModal.bind(this));
+        document.getElementById('import-csv-btn').addEventListener('click', this.showImportCSV.bind(this));
+        document.getElementById('import-bookmarks-btn').addEventListener('click', this.showImportBookmarks.bind(this));
+        document.getElementById('export-modal-close').addEventListener('click', this.closeExportModal.bind(this));
+        document.getElementById('export-modal-cancel').addEventListener('click', this.closeExportModal.bind(this));
+        document.getElementById('export-modal-export').addEventListener('click', this.executeExport.bind(this));
         
-        // Close dropdown when clicking outside
+        // File inputs
+        document.getElementById('import-csv-file').addEventListener('change', this.handleCSVImport.bind(this));
+        document.getElementById('import-bookmark-file').addEventListener('change', this.handleBookmarkImport.bind(this));
+        
+        // Close dropdowns when clicking outside
         document.addEventListener('click', (e) => {
             if (!e.target.closest('.dropdown')) {
+                document.getElementById('select-menu').classList.remove('show');
                 document.getElementById('export-menu').classList.remove('show');
+                document.getElementById('import-menu').classList.remove('show');
             }
         });
     }
@@ -752,10 +797,16 @@ class SavedUrlsManager {
             </div>
         `).join('');
         
-        // Add event listeners to checkboxes
+        // Add event listeners to checkboxes and restore selection state
         document.querySelectorAll('.url-checkbox').forEach(checkbox => {
+            const urlId = parseInt(checkbox.dataset.urlId);
+            // Restore selection state if URL was previously selected
+            checkbox.checked = this.selectedUrls.has(urlId);
             checkbox.addEventListener('change', this.updateSelection.bind(this));
         });
+        
+        // Update button states after restoring selection
+        this.updateSelection();
         
         // Initialize popup elements if they don't exist
         this.initializePopupElements();
@@ -817,33 +868,93 @@ class SavedUrlsManager {
         const checkboxes = document.querySelectorAll('.url-checkbox');
         const checkedBoxes = document.querySelectorAll('.url-checkbox:checked');
         
-        this.selectedUrls.clear();
-        checkedBoxes.forEach(checkbox => {
-            this.selectedUrls.add(parseInt(checkbox.dataset.urlId));
+        // Don't clear selectedUrls, just update with current page changes
+        // Remove unchecked items from current page
+        checkboxes.forEach(checkbox => {
+            const urlId = parseInt(checkbox.dataset.urlId);
+            if (checkbox.checked) {
+                this.selectedUrls.add(urlId);
+            } else {
+                this.selectedUrls.delete(urlId);
+            }
         });
         
         const hasSelection = this.selectedUrls.size > 0;
         document.getElementById('analyze-selected-btn').disabled = !hasSelection;
         document.getElementById('delete-selected-btn').disabled = !hasSelection;
         
-        const selectAllBtn = document.getElementById('select-all-btn');
-        if (checkedBoxes.length === checkboxes.length && checkboxes.length > 0) {
-            selectAllBtn.textContent = 'Deselect All';
+        // Update select dropdown button text based on selection state
+        const selectBtn = document.getElementById('select-dropdown');
+        if (this.selectedUrls.size === 0) {
+            selectBtn.textContent = 'Select';
         } else {
-            selectAllBtn.textContent = 'Select All';
+            selectBtn.textContent = `Selected (${this.selectedUrls.size})`;
         }
     }
     
-    toggleSelectAll() {
+    toggleSelectDropdown() {
+        const menu = document.getElementById('select-menu');
+        menu.classList.toggle('show');
+    }
+    
+    selectAllOnPage() {
         const checkboxes = document.querySelectorAll('.url-checkbox');
-        const checkedBoxes = document.querySelectorAll('.url-checkbox:checked');
-        const shouldCheck = checkedBoxes.length === 0;
-        
         checkboxes.forEach(checkbox => {
-            checkbox.checked = shouldCheck;
+            checkbox.checked = true;
         });
-        
         this.updateSelection();
+        document.getElementById('select-menu').classList.remove('show');
+    }
+    
+    async selectAllOnAllPages() {
+        try {
+            this.showLoading('Loading all URLs...');
+            
+            // Get all URL IDs across all pages
+            const params = new URLSearchParams({
+                per_page: 1000, // Large number to get all
+                page: 1
+            });
+            
+            if (this.searchQuery) {
+                params.append('search', this.searchQuery);
+            }
+            
+            const response = await AppUtils.apiRequest(`/api/saved-urls?${params}`);
+            
+            // Clear current selection and select all
+            this.selectedUrls.clear();
+            response.saved_urls.forEach(url => {
+                this.selectedUrls.add(url.id);
+            });
+            
+            // Update current page checkboxes
+            const checkboxes = document.querySelectorAll('.url-checkbox');
+            checkboxes.forEach(checkbox => {
+                const urlId = parseInt(checkbox.dataset.urlId);
+                checkbox.checked = this.selectedUrls.has(urlId);
+            });
+            
+            this.updateSelection();
+            document.getElementById('select-menu').classList.remove('show');
+            
+            AppUtils.showNotification(`Selected ${this.selectedUrls.size} URLs across all pages`, 'success');
+            
+        } catch (error) {
+            AppUtils.showNotification('Failed to select all URLs: ' + error.message, 'error');
+        } finally {
+            this.hideLoading();
+        }
+    }
+    
+    deselectAll() {
+        const checkboxes = document.querySelectorAll('.url-checkbox');
+        checkboxes.forEach(checkbox => {
+            checkbox.checked = false;
+        });
+        this.selectedUrls.clear();
+        this.updateSelection();
+        document.getElementById('select-menu').classList.remove('show');
     }
     
     async analyzeSingle(urlId) {
@@ -856,6 +967,7 @@ class SavedUrlsManager {
             });
             
             AppUtils.showNotification('URL analyzed successfully!', 'success');
+            // Keep the URL selected if it was selected
             this.loadSavedUrls(); // Reload to update status
             
         } catch (error) {
@@ -890,7 +1002,7 @@ class SavedUrlsManager {
                            (errorCount > 0 ? ` (${errorCount} failed)` : '');
             AppUtils.showNotification(message, successCount > 0 ? 'success' : 'error');
             
-            this.selectedUrls.clear();
+            // Keep selections after analysis - don't clear
             this.loadSavedUrls();
             
         } catch (error) {
@@ -908,6 +1020,9 @@ class SavedUrlsManager {
                 method: 'POST',
                 body: JSON.stringify({ url_id: urlId })
             });
+            
+            // Remove from selection if it was selected
+            this.selectedUrls.delete(urlId);
             
             AppUtils.showNotification('URL deleted successfully', 'success');
             this.loadSavedUrls();
@@ -939,6 +1054,7 @@ class SavedUrlsManager {
             }
             
             AppUtils.showNotification(`Deleted ${successCount} URLs`, 'success');
+            // Clear selections since URLs were deleted
             this.selectedUrls.clear();
             this.loadSavedUrls();
             
@@ -1063,45 +1179,142 @@ class SavedUrlsManager {
     }
     
     toggleExportDropdown() {
+        console.log('Export dropdown clicked');
         const menu = document.getElementById('export-menu');
+        if (menu) {
+            menu.classList.toggle('show');
+            console.log('Export menu toggled, show class:', menu.classList.contains('show'));
+        } else {
+            console.error('Export menu not found');
+        }
+        // Close import dropdown if open
+        const importMenu = document.getElementById('import-menu');
+        if (importMenu) {
+            importMenu.classList.remove('show');
+        }
+    }
+    
+    toggleImportDropdown() {
+        const menu = document.getElementById('import-menu');
         menu.classList.toggle('show');
+        // Close export dropdown if open
+        document.getElementById('export-menu').classList.remove('show');
     }
     
     showExportModal() {
-        document.getElementById('export-menu').classList.remove('show');
-        document.getElementById('export-modal-backdrop').style.display = 'flex';
+        console.log('showExportModal called');
+        const exportMenu = document.getElementById('export-menu');
+        if (exportMenu) {
+            exportMenu.classList.remove('show');
+        }
+        
+        // Update the selected count in the modal
+        const selectedCountDisplay = document.getElementById('selected-count-display');
+        const exportSelectedOption = document.getElementById('export-selected-option');
+        const hasSelection = this.selectedUrls.size > 0;
+        
+        if (selectedCountDisplay) {
+            selectedCountDisplay.textContent = this.selectedUrls.size;
+        }
+        
+        // Disable "Selected URLs Only" option if nothing is selected
+        if (exportSelectedOption) {
+            exportSelectedOption.disabled = !hasSelection;
+        }
+        
+        if (!hasSelection) {
+            // Select "All URLs" option if no selection
+            const allUrlsOption = document.querySelector('input[name="export-scope"][value="all"]');
+            if (allUrlsOption) {
+                allUrlsOption.checked = true;
+            }
+            if (exportSelectedOption) {
+                exportSelectedOption.style.opacity = '0.5';
+            }
+        } else {
+            if (exportSelectedOption) {
+                exportSelectedOption.style.opacity = '1';
+            }
+        }
+        
+        // Show/hide filter options based on scope selection
+        this.updateFilterOptionsVisibility();
+        
+        // Add event listeners for scope changes
+        document.querySelectorAll('input[name="export-scope"]').forEach(radio => {
+            radio.addEventListener('change', this.updateFilterOptionsVisibility.bind(this));
+        });
+        
+        const modal = document.getElementById('export-modal-backdrop');
+        if (modal) {
+            modal.style.display = 'flex';
+        } else {
+            console.error('Export modal not found');
+        }
     }
     
     closeExportModal() {
         document.getElementById('export-modal-backdrop').style.display = 'none';
     }
     
+    updateFilterOptionsVisibility() {
+        const scope = document.querySelector('input[name="export-scope"]:checked').value;
+        const filterOptions = document.getElementById('filter-options');
+        
+        // Hide analyzed/unanalyzed filters when exporting selected URLs
+        // since we're exporting specific URLs regardless of their status
+        if (scope === 'selected') {
+            filterOptions.style.display = 'none';
+        } else {
+            filterOptions.style.display = 'block';
+        }
+    }
+    
     async executeExport() {
         try {
+            const scope = document.querySelector('input[name="export-scope"]:checked').value;
             const format = document.querySelector('input[name="export-format"]:checked').value;
-            const includeAnalyzed = document.getElementById('include-analyzed').checked;
-            const includeUnanalyzed = document.getElementById('include-unanalyzed').checked;
             
-            if (!includeAnalyzed && !includeUnanalyzed) {
-                AppUtils.showNotification('Please select at least one type of URL to export', 'warning');
+            // Validation for selected scope
+            if (scope === 'selected' && this.selectedUrls.size === 0) {
+                AppUtils.showNotification('No URLs selected for export', 'warning');
                 return;
             }
             
             this.showLoading('Preparing export...');
             
-            const params = new URLSearchParams({
-                format: format,
-                include_analyzed: includeAnalyzed,
-                include_unanalyzed: includeUnanalyzed
-            });
-            
-            // Create a temporary link to trigger download
-            const link = document.createElement('a');
-            link.href = `/api/export-saved-urls?${params}`;
-            link.download = '';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
+            if (scope === 'selected') {
+                // Export selected URLs using a different approach
+                await this.exportSelectedUrls(format);
+            } else {
+                // Export all URLs using existing API
+                const includeAnalyzed = document.getElementById('include-analyzed').checked;
+                const includeUnanalyzed = document.getElementById('include-unanalyzed').checked;
+                
+                if (!includeAnalyzed && !includeUnanalyzed) {
+                    AppUtils.showNotification('Please select at least one type of URL to export', 'warning');
+                    return;
+                }
+                
+                const params = new URLSearchParams({
+                    format: format,
+                    include_analyzed: includeAnalyzed,
+                    include_unanalyzed: includeUnanalyzed
+                });
+                
+                // Add search filter if active
+                if (this.searchQuery) {
+                    params.append('search', this.searchQuery);
+                }
+                
+                // Create a temporary link to trigger download
+                const link = document.createElement('a');
+                link.href = `/api/export-saved-urls?${params}`;
+                link.download = '';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            }
             
             this.closeExportModal();
             AppUtils.showNotification('Export started! Your download should begin shortly.', 'success');
@@ -1113,12 +1326,143 @@ class SavedUrlsManager {
         }
     }
     
-    async handleImport(event) {
+    async exportSelectedUrls(format) {
+        // Get detailed data for selected URLs
+        const selectedUrlsArray = Array.from(this.selectedUrls);
+        const urlsData = [];
+        
+        // Fetch data for each selected URL in batches to avoid overwhelming the API
+        const batchSize = 10;
+        for (let i = 0; i < selectedUrlsArray.length; i += batchSize) {
+            const batch = selectedUrlsArray.slice(i, i + batchSize);
+            
+            const response = await AppUtils.apiRequest('/api/saved-urls?per_page=1000');
+            const allUrls = response.saved_urls;
+            
+            // Filter to only selected URLs
+            const batchData = allUrls.filter(url => batch.includes(url.id));
+            urlsData.push(...batchData);
+        }
+        
+        // Generate export content client-side
+        if (format === 'csv') {
+            this.downloadCSV(urlsData);
+        } else if (format === 'bookmarks') {
+            this.downloadBookmarks(urlsData);
+        }
+    }
+    
+    downloadCSV(urlsData) {
+        const csvContent = this.generateCSVContent(urlsData);
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        
+        link.setAttribute('href', url);
+        link.setAttribute('download', `nutgraf_selected_urls_${new Date().toISOString().split('T')[0]}.csv`);
+        link.style.visibility = 'hidden';
+        
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        URL.revokeObjectURL(url);
+    }
+    
+    downloadBookmarks(urlsData) {
+        const bookmarkContent = this.generateBookmarkContent(urlsData);
+        const blob = new Blob([bookmarkContent], { type: 'text/html;charset=utf-8;' });
+        const link = document.createElement('a');
+        const url = URL.createObjectURL(blob);
+        
+        link.setAttribute('href', url);
+        link.setAttribute('download', `nutgraf_selected_bookmarks_${new Date().toISOString().split('T')[0]}.html`);
+        link.style.visibility = 'hidden';
+        
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        URL.revokeObjectURL(url);
+    }
+    
+    generateCSVContent(urlsData) {
+        const headers = ['url', 'title', 'description', 'is_analyzed', 'created_at', 'updated_at', 'summary_id', 'summary_text', 'summary_word_count', 'summary_settings'];
+        const rows = [headers.join(',')];
+        
+        urlsData.forEach(url => {
+            const summaryData = url.summary || {};
+            const summarySettings = url.summary ? JSON.stringify({
+                length: summaryData.length_setting,
+                tone: summaryData.tone_setting,
+                format: summaryData.format_setting,
+                model: summaryData.model_used
+            }).replace(/"/g, '""') : '';
+            
+            const row = [
+                `"${(url.url || '').replace(/"/g, '""')}"`,
+                `"${(url.title || '').replace(/"/g, '""')}"`,
+                `"${(url.description || '').replace(/"/g, '""')}"`,
+                url.is_analyzed,
+                url.created_at,
+                url.updated_at,
+                summaryData.id || '',
+                `"${(summaryData.text || '').replace(/"/g, '""')}"`,
+                summaryData.word_count || '',
+                `"${summarySettings}"`
+            ];
+            rows.push(row.join(','));
+        });
+        
+        return rows.join('\n');
+    }
+    
+    generateBookmarkContent(urlsData) {
+        const timestamp = Math.floor(Date.now() / 1000);
+        
+        let content = `<!DOCTYPE NETSCAPE-Bookmark-file-1>
+<!-- This is an automatically generated file.
+     It will be read and overwritten.
+     DO NOT EDIT! -->
+<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=UTF-8">
+<TITLE>Bookmarks</TITLE>
+<H1>Bookmarks</H1>
+<DL><p>
+    <DT><H3 FOLDED ADD_DATE="${timestamp}">Nutgraf Selected URLs</H3>
+    <DL><p>
+`;
+        
+        urlsData.forEach(url => {
+            const title = (url.title || 'Untitled').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+            const urlEscaped = url.url.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+            const addDate = Math.floor(new Date(url.created_at).getTime() / 1000);
+            const status = url.is_analyzed ? ' [Analyzed]' : ' [Unanalyzed]';
+            
+            content += `        <DT><A HREF="${urlEscaped}" ADD_DATE="${addDate}">${title}${status}</A>\n`;
+        });
+        
+        content += `    </DL><p>
+</DL><p>`;
+        
+        return content;
+    }
+    
+    showImportCSV() {
+        document.getElementById('import-menu').classList.remove('show');
+        document.getElementById('import-csv-file').click();
+    }
+    
+    showImportBookmarks() {
+        document.getElementById('import-menu').classList.remove('show');
+        document.getElementById('import-bookmark-file').click();
+    }
+    
+    async handleCSVImport(event) {
         const file = event.target.files[0];
         if (!file) return;
         
         try {
-            this.showLoading('Importing URLs...');
+            this.showLoading('Importing CSV...');
             
             const formData = new FormData();
             formData.append('file', file);
@@ -1144,7 +1488,55 @@ class SavedUrlsManager {
             this.loadSavedUrls();
             
         } catch (error) {
-            AppUtils.showNotification('Failed to import URLs: ' + error.message, 'error');
+            AppUtils.showNotification('Failed to import CSV: ' + error.message, 'error');
+        } finally {
+            this.hideLoading();
+            // Clear the file input
+            event.target.value = '';
+        }
+    }
+    
+    async handleBookmarkImport(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        
+        try {
+            this.showLoading('Importing bookmarks...');
+            
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            const response = await fetch('/api/import-bookmarks-as-saved', {
+                method: 'POST',
+                body: formData
+            });
+            
+            const result = await response.json();
+            
+            if (!response.ok) {
+                throw new Error(result.error || 'Import failed');
+            }
+            
+            // Show detailed success message
+            let message = result.message;
+            if (result.folders_found && result.folders_found.length > 0) {
+                message += `\nFolders imported: ${result.folders_found.slice(0, 3).join(', ')}`;
+                if (result.folders_found.length > 3) {
+                    message += ` and ${result.folders_found.length - 3} more`;
+                }
+            }
+            
+            AppUtils.showNotification(message, 'success');
+            
+            if (result.errors && result.errors.length > 0) {
+                console.warn('Import errors:', result.errors);
+            }
+            
+            // Reload the page to show imported URLs
+            this.loadSavedUrls();
+            
+        } catch (error) {
+            AppUtils.showNotification('Failed to import bookmarks: ' + error.message, 'error');
         } finally {
             this.hideLoading();
             // Clear the file input

@@ -26,11 +26,14 @@
             <div class="input-method" data-method="file">
                 <h3>Upload File</h3>
                 <div class="file-upload">
-                    <input type="file" id="file-input" accept=".txt,.csv" style="display: none;">
+                    <input type="file" id="file-input" accept=".txt,.csv,.html,.htm" style="display: none;">
                     <button class="btn btn-secondary" onclick="document.getElementById('file-input').click()">
                         Choose File
                     </button>
                     <span id="file-name">No file selected</span>
+                </div>
+                <div class="file-help">
+                    <small>Supports: Text files (.txt), CSV files (.csv), Browser bookmarks (.html)</small>
                 </div>
             </div>
             
@@ -62,6 +65,20 @@
             
             <div id="url-list" class="url-list">
                 <!-- URLs will be populated here -->
+            </div>
+            
+            <!-- Pagination controls -->
+            <div class="pagination-container" id="url-pagination" style="display: none;">
+                <div class="pagination-info">
+                    <span id="pagination-info-text">Showing 1-50 of 150 URLs</span>
+                </div>
+                <div class="pagination-controls">
+                    <button class="btn btn-outline btn-sm" id="prev-page" disabled>Previous</button>
+                    <span class="pagination-pages" id="pagination-pages">
+                        <!-- Page numbers will be inserted here -->
+                    </span>
+                    <button class="btn btn-outline btn-sm" id="next-page">Next</button>
+                </div>
             </div>
         </div>
 
