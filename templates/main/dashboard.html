@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 
-{% block title %}Dashboard - Nutgraf{% endblock %}
+{% block title %}{{ branding.ui.page_title_dashboard }} - {{ branding.app.name }}{% endblock %}
 
 {% block content %}
 <div class="dashboard">
     <div class="dashboard-header">
-        <h1>Welcome back!</h1>
-        <p>Ready to analyze some articles?</p>
+        <h1>{{ branding.features.dashboard_welcome }}</h1>
+        <p>{{ branding.app.description }}</p>
     </div>
 
     <div class="dashboard-stats">

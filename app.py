@@ -9,6 +9,7 @@ from wtforms.validators import DataRequired, Email, Length
 from datetime import datetime
 import os
 from dotenv import load_dotenv
+from config import branding
 
 load_dotenv()
 
@@ -48,6 +49,11 @@ app.register_blueprint(auth_bp, url_prefix='/auth')
 app.register_blueprint(main_bp)
 app.register_blueprint(api_bp, url_prefix='/api')
 app.register_blueprint(external_api_bp, url_prefix='/api')
+
+# Make branding available to all templates
+@app.context_processor
+def inject_branding():
+    return {'branding': branding.to_dict()}
 
 if __name__ == '__main__':
     with app.app_context():

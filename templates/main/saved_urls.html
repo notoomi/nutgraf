@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Saved URLs - Nutgraf{% endblock %}
+{% block title %}{{ branding.ui.page_title_saved_urls }} - {{ branding.app.name }}{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -46,7 +46,55 @@
 
 .bulk-actions {
     display: flex;
+    gap: 1rem;
+    align-items: center;
+}
+
+.action-group {
+    display: flex;
     gap: 0.5rem;
+}
+
+.dropdown {
+    position: relative;
+}
+
+.dropdown-toggle::after {
+    content: '▼';
+    margin-left: 0.5rem;
+    font-size: 0.75rem;
+}
+
+.dropdown-menu {
+    position: absolute;
+    top: 100%;
+    right: 0;
+    background: white;
+    border: 1px solid #d1d5db;
+    border-radius: 0.375rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    z-index: 100;
+    min-width: 150px;
+    display: none;
+}
+
+.dropdown-menu.show {
+    display: block;
+}
+
+.dropdown-item {
+    display: block;
+    width: 100%;
+    padding: 0.5rem 1rem;
+    background: none;
+    border: none;
+    text-align: left;
+    cursor: pointer;
+    font-size: 0.875rem;
+}
+
+.dropdown-item:hover {
+    background: #f9fafb;
 }
 
 .stats-section {
@@ -343,6 +391,117 @@
     padding-right: 2rem;
 }
 
+.modal-backdrop {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal-content {
+    background: white;
+    border-radius: 0.5rem;
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.15);
+    max-width: 500px;
+    width: 90%;
+    max-height: 80vh;
+    overflow-y: auto;
+}
+
+.modal-header {
+    padding: 1.5rem 1.5rem 1rem;
+    border-bottom: 1px solid #e5e7eb;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.modal-header h3 {
+    margin: 0;
+    color: #1f2937;
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+    color: #6b7280;
+    width: 30px;
+    height: 30px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+}
+
+.modal-close:hover {
+    background: #f3f4f6;
+    color: #374151;
+}
+
+.modal-body {
+    padding: 1.5rem;
+}
+
+.modal-footer {
+    padding: 1rem 1.5rem;
+    border-top: 1px solid #e5e7eb;
+    display: flex;
+    gap: 0.5rem;
+    justify-content: flex-end;
+}
+
+.export-options {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.option-group h4 {
+    margin: 0 0 0.75rem 0;
+    color: #374151;
+    font-size: 1rem;
+}
+
+.radio-option, .checkbox-option {
+    display: flex;
+    align-items: flex-start;
+    gap: 0.5rem;
+    padding: 0.75rem;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.375rem;
+    cursor: pointer;
+    margin-bottom: 0.5rem;
+}
+
+.radio-option:hover, .checkbox-option:hover {
+    background: #f9fafb;
+}
+
+.radio-option input, .checkbox-option input {
+    margin: 0;
+    flex-shrink: 0;
+}
+
+.radio-option span, .checkbox-option span {
+    font-weight: 500;
+    color: #374151;
+}
+
+.radio-option small {
+    display: block;
+    color: #6b7280;
+    font-size: 0.75rem;
+    margin-top: 0.25rem;
+}
+
 @media (max-width: 768px) {
     .saved-urls-container {
         padding: 1rem;
@@ -373,8 +532,8 @@
 {% block content %}
 <div class="saved-urls-container">
     <div class="page-header">
-        <h1>Saved URLs</h1>
-        <p>Manage your saved URLs and analyze them when ready</p>
+        <h1>{{ branding.ui.page_title_saved_urls }}</h1>
+        <p>{{ branding.features.saved_urls_description }}</p>
     </div>
 
     <div class="controls-section">
@@ -382,9 +541,21 @@
             <input type="text" id="search-input" placeholder="Search saved URLs...">
         </div>
         <div class="bulk-actions">
-            <button class="btn btn-secondary" id="select-all-btn">Select All</button>
-            <button class="btn btn-primary" id="analyze-selected-btn" disabled>Analyze Selected</button>
-            <button class="btn btn-danger" id="delete-selected-btn" disabled>Delete Selected</button>
+            <div class="action-group">
+                <button class="btn btn-secondary" id="select-all-btn">Select All</button>
+                <button class="btn btn-primary" id="analyze-selected-btn" disabled>Analyze Selected</button>
+                <button class="btn btn-danger" id="delete-selected-btn" disabled>Delete Selected</button>
+            </div>
+            <div class="action-group">
+                <div class="dropdown">
+                    <button class="btn btn-outline dropdown-toggle" id="export-dropdown">Export</button>
+                    <div class="dropdown-menu" id="export-menu">
+                        <button class="dropdown-item" onclick="savedUrlsManager.showExportModal()">Export URLs...</button>
+                    </div>
+                </div>
+                <button class="btn btn-outline" id="import-btn">Import CSV</button>
+                <input type="file" id="import-file" accept=".csv" style="display: none;">
+            </div>
         </div>
     </div>
 
@@ -418,6 +589,49 @@
             <p id="loading-text">Loading...</p>
         </div>
     </div>
+
+    <!-- Export Modal -->
+    <div class="modal-backdrop" id="export-modal-backdrop" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Export Saved URLs</h3>
+                <button class="modal-close" onclick="savedUrlsManager.closeExportModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="export-options">
+                    <div class="option-group">
+                        <h4>Export Format</h4>
+                        <label class="radio-option">
+                            <input type="radio" name="export-format" value="csv" checked>
+                            <span>CSV (for {{ branding.app.name }} import)</span>
+                            <small>{{ branding.features.export_csv_description }}</small>
+                        </label>
+                        <label class="radio-option">
+                            <input type="radio" name="export-format" value="bookmarks">
+                            <span>HTML Bookmarks (for browser import)</span>
+                            <small>{{ branding.features.export_bookmarks_description }}</small>
+                        </label>
+                    </div>
+                    
+                    <div class="option-group">
+                        <h4>Include URLs</h4>
+                        <label class="checkbox-option">
+                            <input type="checkbox" id="include-analyzed" checked>
+                            <span>Analyzed URLs</span>
+                        </label>
+                        <label class="checkbox-option">
+                            <input type="checkbox" id="include-unanalyzed" checked>
+                            <span>Unanalyzed URLs</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="savedUrlsManager.closeExportModal()">Cancel</button>
+                <button class="btn btn-primary" onclick="savedUrlsManager.executeExport()">Export</button>
+            </div>
+        </div>
+    </div>
 </div>
 {% endblock %}
 
@@ -448,6 +662,18 @@ class SavedUrlsManager {
         document.getElementById('select-all-btn').addEventListener('click', this.toggleSelectAll.bind(this));
         document.getElementById('analyze-selected-btn').addEventListener('click', this.analyzeSelected.bind(this));
         document.getElementById('delete-selected-btn').addEventListener('click', this.deleteSelected.bind(this));
+        
+        // Export/Import actions
+        document.getElementById('export-dropdown').addEventListener('click', this.toggleExportDropdown.bind(this));
+        document.getElementById('import-btn').addEventListener('click', () => document.getElementById('import-file').click());
+        document.getElementById('import-file').addEventListener('change', this.handleImport.bind(this));
+        
+        // Close dropdown when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.dropdown')) {
+                document.getElementById('export-menu').classList.remove('show');
+            }
+        });
     }
     
     debounce(func, wait) {
@@ -833,6 +1059,96 @@ class SavedUrlsManager {
     handleEscapeKey(event) {
         if (event.key === 'Escape') {
             this.closeSummaryPopup();
+        }
+    }
+    
+    toggleExportDropdown() {
+        const menu = document.getElementById('export-menu');
+        menu.classList.toggle('show');
+    }
+    
+    showExportModal() {
+        document.getElementById('export-menu').classList.remove('show');
+        document.getElementById('export-modal-backdrop').style.display = 'flex';
+    }
+    
+    closeExportModal() {
+        document.getElementById('export-modal-backdrop').style.display = 'none';
+    }
+    
+    async executeExport() {
+        try {
+            const format = document.querySelector('input[name="export-format"]:checked').value;
+            const includeAnalyzed = document.getElementById('include-analyzed').checked;
+            const includeUnanalyzed = document.getElementById('include-unanalyzed').checked;
+            
+            if (!includeAnalyzed && !includeUnanalyzed) {
+                AppUtils.showNotification('Please select at least one type of URL to export', 'warning');
+                return;
+            }
+            
+            this.showLoading('Preparing export...');
+            
+            const params = new URLSearchParams({
+                format: format,
+                include_analyzed: includeAnalyzed,
+                include_unanalyzed: includeUnanalyzed
+            });
+            
+            // Create a temporary link to trigger download
+            const link = document.createElement('a');
+            link.href = `/api/export-saved-urls?${params}`;
+            link.download = '';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            
+            this.closeExportModal();
+            AppUtils.showNotification('Export started! Your download should begin shortly.', 'success');
+            
+        } catch (error) {
+            AppUtils.showNotification('Failed to export URLs: ' + error.message, 'error');
+        } finally {
+            this.hideLoading();
+        }
+    }
+    
+    async handleImport(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+        
+        try {
+            this.showLoading('Importing URLs...');
+            
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            const response = await fetch('/api/import-saved-urls', {
+                method: 'POST',
+                body: formData
+            });
+            
+            const result = await response.json();
+            
+            if (!response.ok) {
+                throw new Error(result.error || 'Import failed');
+            }
+            
+            AppUtils.showNotification(result.message, 'success');
+            
+            if (result.errors && result.errors.length > 0) {
+                console.warn('Import errors:', result.errors);
+            }
+            
+            // Reload the page to show imported URLs
+            this.loadSavedUrls();
+            
+        } catch (error) {
+            AppUtils.showNotification('Failed to import URLs: ' + error.message, 'error');
+        } finally {
+            this.hideLoading();
+            // Clear the file input
+            event.target.value = '';
         }
     }
 }

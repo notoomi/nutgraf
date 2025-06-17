@@ -1,11 +1,14 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, make_response
 from flask_login import login_required, current_user
 from models import db, Summary, Tag, SummaryTag, SavedUrl
 from services.article_extractor import ArticleExtractor
 from services.llm_service import LLMService
 from services.url_processor import URLProcessor
 import json
+import csv
+import io
 from datetime import datetime
+from urllib.parse import quote
 
 api_bp = Blueprint('api', __name__)
 
@@ -566,6 +569,234 @@ def analyze_saved_url():
                 }
             }
         })
+        
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@api_bp.route('/export-saved-urls', methods=['GET'])
+@login_required
+def export_saved_urls():
+    """Export saved URLs in CSV or browser bookmark format"""
+    try:
+        export_format = request.args.get('format', 'csv')
+        include_analyzed = request.args.get('include_analyzed', 'true').lower() == 'true'
+        include_unanalyzed = request.args.get('include_unanalyzed', 'true').lower() == 'true'
+        
+        # Build query based on filters
+        query = SavedUrl.query.filter_by(user_id=current_user.id)
+        
+        if not include_analyzed and not include_unanalyzed:
+            return jsonify({'error': 'Must include at least analyzed or unanalyzed URLs'}), 400
+        elif not include_analyzed:
+            query = query.filter(SavedUrl.is_analyzed == False)
+        elif not include_unanalyzed:
+            query = query.filter(SavedUrl.is_analyzed == True)
+        
+        saved_urls = query.order_by(SavedUrl.created_at.desc()).all()
+        
+        if not saved_urls:
+            return jsonify({'error': 'No saved URLs to export'}), 400
+        
+        if export_format == 'csv':
+            return export_as_csv(saved_urls)
+        elif export_format == 'bookmarks':
+            return export_as_bookmarks(saved_urls)
+        else:
+            return jsonify({'error': 'Invalid format. Use "csv" or "bookmarks"'}), 400
+            
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+def export_as_csv(saved_urls):
+    """Export saved URLs as CSV format for Nutgraf import"""
+    output = io.StringIO()
+    writer = csv.writer(output)
+    
+    # Write header
+    writer.writerow([
+        'url',
+        'title', 
+        'description',
+        'is_analyzed',
+        'created_at',
+        'updated_at',
+        'summary_id',
+        'summary_text',
+        'summary_word_count',
+        'summary_settings'
+    ])
+    
+    # Write data
+    for saved_url in saved_urls:
+        summary_data = ''
+        summary_id = ''
+        summary_word_count = ''
+        summary_settings = ''
+        
+        # Get summary data if analyzed
+        if saved_url.is_analyzed:
+            summary = Summary.query.filter_by(
+                user_id=current_user.id,
+                url=saved_url.url
+            ).order_by(Summary.created_at.desc()).first()
+            
+            if summary:
+                summary_id = summary.id
+                summary_data = summary.summary_text
+                summary_word_count = summary.word_count or ''
+                summary_settings = json.dumps({
+                    'length': summary.length_setting,
+                    'tone': summary.tone_setting,
+                    'format': summary.format_setting,
+                    'model': summary.model_used
+                })
+        
+        writer.writerow([
+            saved_url.url,
+            saved_url.title or '',
+            saved_url.description or '',
+            saved_url.is_analyzed,
+            saved_url.created_at.isoformat(),
+            saved_url.updated_at.isoformat(),
+            summary_id,
+            summary_data,
+            summary_word_count,
+            summary_settings
+        ])
+    
+    # Create response
+    output.seek(0)
+    response = make_response(output.getvalue())
+    response.headers['Content-Type'] = 'text/csv'
+    response.headers['Content-Disposition'] = f'attachment; filename=nutgraf_saved_urls_{datetime.now().strftime("%Y%m%d_%H%M%S")}.csv'
+    
+    return response
+
+def export_as_bookmarks(saved_urls):
+    """Export saved URLs as HTML bookmarks file for browser import"""
+    
+    # Generate bookmark HTML
+    html_content = '''<!DOCTYPE NETSCAPE-Bookmark-file-1>
+<!-- This is an automatically generated file.
+     It will be read and overwritten.
+     DO NOT EDIT! -->
+<META HTTP-EQUIV="Content-Type" CONTENT="text/html; charset=UTF-8">
+<TITLE>Bookmarks</TITLE>
+<H1>Bookmarks</H1>
+<DL><p>
+    <DT><H3 FOLDED ADD_DATE="{timestamp}">Nutgraf Saved URLs</H3>
+    <DL><p>
+'''.format(timestamp=int(datetime.now().timestamp()))
+    
+    for saved_url in saved_urls:
+        # Create bookmark entry
+        title = saved_url.title or 'Untitled'
+        url = saved_url.url
+        add_date = int(saved_url.created_at.timestamp())
+        
+        # Escape HTML characters in title
+        title = title.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;')
+        
+        # Add description as part of title if available
+        if saved_url.description:
+            description = saved_url.description.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+            title += f' - {description}'
+        
+        # Add analysis status indicator
+        status = " [Analyzed]" if saved_url.is_analyzed else " [Unanalyzed]"
+        title += status
+        
+        html_content += f'        <DT><A HREF="{url}" ADD_DATE="{add_date}">{title}</A>\n'
+    
+    # Close HTML structure
+    html_content += '''    </DL><p>
+</DL><p>
+'''
+    
+    # Create response
+    response = make_response(html_content)
+    response.headers['Content-Type'] = 'text/html'
+    response.headers['Content-Disposition'] = f'attachment; filename=nutgraf_bookmarks_{datetime.now().strftime("%Y%m%d_%H%M%S")}.html'
+    
+    return response
+
+@api_bp.route('/import-saved-urls', methods=['POST'])
+@login_required
+def import_saved_urls():
+    """Import saved URLs from CSV file"""
+    try:
+        if 'file' not in request.files:
+            return jsonify({'error': 'No file provided'}), 400
+        
+        file = request.files['file']
+        if file.filename == '':
+            return jsonify({'error': 'No file selected'}), 400
+        
+        if not file.filename.lower().endswith('.csv'):
+            return jsonify({'error': 'File must be a CSV file'}), 400
+        
+        # Read and parse CSV
+        content = file.read().decode('utf-8')
+        csv_reader = csv.DictReader(io.StringIO(content))
+        
+        imported_count = 0
+        skipped_count = 0
+        errors = []
+        
+        for row_num, row in enumerate(csv_reader, start=2):  # Start at 2 because row 1 is header
+            try:
+                url = row.get('url', '').strip()
+                if not url:
+                    continue
+                
+                # Check if URL already exists
+                existing_url = SavedUrl.query.filter_by(
+                    user_id=current_user.id,
+                    url=url
+                ).first()
+                
+                if existing_url:
+                    skipped_count += 1
+                    continue
+                
+                # Create new saved URL
+                saved_url = SavedUrl(
+                    user_id=current_user.id,
+                    url=url,
+                    title=row.get('title', '').strip() or None,
+                    description=row.get('description', '').strip() or None,
+                    is_analyzed=row.get('is_analyzed', '').lower() == 'true'
+                )
+                
+                # Parse dates if provided
+                try:
+                    if row.get('created_at'):
+                        saved_url.created_at = datetime.fromisoformat(row['created_at'].replace('Z', '+00:00'))
+                except:
+                    pass  # Use default created_at
+                
+                db.session.add(saved_url)
+                imported_count += 1
+                
+            except Exception as e:
+                errors.append(f"Row {row_num}: {str(e)}")
+                continue
+        
+        db.session.commit()
+        
+        result = {
+            'imported': imported_count,
+            'skipped': skipped_count,
+            'errors': errors[:10]  # Limit to first 10 errors
+        }
+        
+        if errors:
+            result['message'] = f'Imported {imported_count} URLs, skipped {skipped_count} duplicates, {len(errors)} errors'
+        else:
+            result['message'] = f'Successfully imported {imported_count} URLs, skipped {skipped_count} duplicates'
+        
+        return jsonify(result)
         
     except Exception as e:
         db.session.rollback()

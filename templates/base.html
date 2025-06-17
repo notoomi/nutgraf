@@ -3,28 +3,72 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Nutgraf{% endblock %}</title>
+    <title>{% block title %}{{ branding.app.name }}{% endblock %}</title>
+    
+    <!-- SEO Meta Tags -->
+    <meta name="description" content="{{ branding.seo.og_description }}">
+    <meta property="og:title" content="{{ branding.seo.og_title }}">
+    <meta property="og:description" content="{{ branding.seo.og_description }}">
+    <meta property="og:image" content="{{ branding.seo.og_image }}">
+    {% if branding.seo.twitter_handle %}
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:site" content="@{{ branding.seo.twitter_handle }}">
+    {% endif %}
+    
+    <!-- Favicon -->
+    <link rel="icon" href="{{ branding.branding.favicon_url }}" type="image/x-icon">
+    
+    <!-- Stylesheets -->
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
+    {% if branding.branding.custom_css_url %}
+    <link rel="stylesheet" href="{{ branding.branding.custom_css_url }}">
+    {% endif %}
+    
+    <!-- Theme Colors -->
+    <style>
+        :root {
+            {% for key, value in branding.colors.items() %}
+            --color-{{ key.replace('_', '-') }}: {{ value }};
+            {% endfor %}
+        }
+    </style>
+    
     {% block extra_css %}{% endblock %}
+    
+    <!-- Analytics -->
+    {% if branding.analytics.google_analytics_id %}
+    <!-- Google Analytics -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id={{ branding.analytics.google_analytics_id }}"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', '{{ branding.analytics.google_analytics_id }}');
+    </script>
+    {% endif %}
 </head>
 <body>
     <nav class="navbar">
         <div class="nav-container">
             <div class="nav-brand">
                 <a href="{{ url_for('main.dashboard') if current_user.is_authenticated else url_for('auth.login') }}">
-                    Nutgraf
+                    {% if branding.branding.logo_url %}
+                    <img src="{{ branding.branding.logo_url }}" alt="{{ branding.branding.logo_alt_text }}" style="height: 32px; vertical-align: middle;">
+                    {% else %}
+                    {{ branding.app.name }}
+                    {% endif %}
                 </a>
             </div>
             
             {% if current_user.is_authenticated %}
             <div class="nav-menu">
-                <a href="{{ url_for('main.dashboard') }}" class="nav-link">Dashboard</a>
-                <a href="{{ url_for('main.analyze') }}" class="nav-link">Analyze</a>
-                <a href="{{ url_for('main.saved_urls') }}" class="nav-link">Saved URLs</a>
-                <a href="{{ url_for('main.history') }}" class="nav-link">History</a>
-                <a href="{{ url_for('main.settings') }}" class="nav-link">Settings</a>
-                <a href="{{ url_for('main.api_documentation') }}" class="nav-link">API Docs</a>
-                <a href="{{ url_for('auth.logout') }}" class="nav-link">Logout</a>
+                <a href="{{ url_for('main.dashboard') }}" class="nav-link">{{ branding.ui.nav_dashboard }}</a>
+                <a href="{{ url_for('main.analyze') }}" class="nav-link">{{ branding.ui.nav_analyze }}</a>
+                <a href="{{ url_for('main.saved_urls') }}" class="nav-link">{{ branding.ui.nav_saved_urls }}</a>
+                <a href="{{ url_for('main.history') }}" class="nav-link">{{ branding.ui.nav_history }}</a>
+                <a href="{{ url_for('main.settings') }}" class="nav-link">{{ branding.ui.nav_settings }}</a>
+                <a href="{{ url_for('main.api_documentation') }}" class="nav-link">{{ branding.ui.nav_api_docs }}</a>
+                <a href="{{ url_for('auth.logout') }}" class="nav-link">{{ branding.ui.nav_logout }}</a>
             </div>
             {% endif %}
         </div>
@@ -46,7 +90,7 @@
 
     <footer class="footer">
         <div class="footer-content">
-            <p>&copy; 2024 Nutgraf. Built with Flask and AI.</p>
+            <p>{{ branding.ui.footer_text }}</p>
         </div>
     </footer>
 

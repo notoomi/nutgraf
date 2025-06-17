@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Analyze Articles - Nutgraf{% endblock %}
+{% block title %}{{ branding.ui.page_title_analyze }} - {{ branding.app.name }}{% endblock %}
 
 {% block extra_css %}
 <link rel="stylesheet" href="{{ url_for('static', filename='css/analyze.css') }}">
@@ -9,8 +9,8 @@
 {% block content %}
 <div class="analyze-container">
     <div class="analyze-header">
-        <h1>Analyze Articles</h1>
-        <p>Input URLs and customize your summary preferences</p>
+        <h1>{{ branding.ui.page_title_analyze }}</h1>
+        <p>{{ branding.features.analyze_description }}</p>
     </div>
 
     <!-- Step 1: URL Input -->
