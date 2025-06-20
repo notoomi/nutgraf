@@ -117,7 +117,7 @@ FEATURE_EXPORT_BOOKMARKS_DESC=Browser-compatible bookmark format
 
 #### Footer
 ```bash
-UI_FOOTER_TEXT=© 2024 Your Company. Powered by AI technology.
+UI_FOOTER_TEXT=© 2025 Notoomi
 ```
 
 ### 4. Advanced Customization
@@ -250,13 +250,103 @@ THEME_PRIMARY=#8b0000
 FEATURE_ANALYZE_DESC=Analyze research papers and academic articles
 ```
 
+## Implementation Details
+
+### How Branding Works
+
+The application uses a configuration-driven approach for whitelabeling:
+
+1. **Environment Variables** → Read by `config/branding.py`
+2. **BrandingConfig Class** → Processes and organizes settings
+3. **Template Context** → Made available to all Jinja2 templates via `app.context_processor`
+4. **CSS Custom Properties** → Dynamic theming through CSS variables
+
+### Template Usage
+
+In any template, access branding data through the `branding` object:
+
+```html
+<!-- Application name -->
+<title>{{ branding.app.name }}</title>
+
+<!-- Logo with alt text -->
+<img src="{{ branding.branding.logo_url }}" 
+     alt="{{ branding.branding.logo_alt_text }}">
+
+<!-- Custom navigation text -->
+<a href="/dashboard">{{ branding.ui.nav_dashboard }}</a>
+
+<!-- Dynamic footer -->
+<footer>{{ branding.ui.footer_text }}</footer>
+```
+
+### CSS Theming System
+
+Colors are applied through CSS custom properties:
+
+```css
+/* These variables are auto-generated from your environment settings */
+:root {
+  --color-primary: #3b82f6;        /* From THEME_PRIMARY */
+  --color-primary-hover: #2563eb;  /* From THEME_PRIMARY_HOVER */
+  --color-secondary: #6b7280;      /* From THEME_SECONDARY */
+  /* ... all other theme colors ... */
+}
+
+/* Use in your components */
+.btn-primary {
+  background-color: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.btn-primary:hover {
+  background-color: var(--color-primary-hover);
+}
+```
+
+### Adding New Brand Elements
+
+To add custom branding elements:
+
+1. **Add environment variable:**
+   ```bash
+   MY_CUSTOM_TEXT=Custom Value
+   ```
+
+2. **Update config/branding.py:**
+   ```python
+   # In the appropriate section
+   CUSTOM_ELEMENT = os.environ.get('MY_CUSTOM_TEXT', 'Default Value')
+   
+   # Add to to_dict() method
+   'custom': {
+       'element': cls.CUSTOM_ELEMENT,
+   }
+   ```
+
+3. **Use in templates:**
+   ```html
+   {{ branding.custom.element }}
+   ```
+
 ## Testing Your Branding
 
+### Development Testing
 1. **Restart the application** after making changes
 2. **Clear browser cache** to see updated assets
 3. **Test all pages** to ensure consistency
 4. **Check mobile responsiveness**
 5. **Verify social sharing** with tools like Facebook Debugger
+
+### Production Checklist
+- [ ] All environment variables set correctly
+- [ ] Logo files uploaded and accessible
+- [ ] Favicon displays in browser tabs
+- [ ] Colors render consistently across browsers
+- [ ] Email branding works (test with password reset)
+- [ ] API documentation reflects custom branding
+- [ ] Social sharing images and metadata correct
+- [ ] Custom CSS (if used) doesn't break responsive design
 
 ## Troubleshooting
 
